@@ -55,6 +55,8 @@ type NewTableJson = {
 
 type TableJson = OldTableJson | NewTableJson;
 
+type RelationArray<T> = T[] | T | null;
+
 type Schedule = {
   id: string;
   church_id: string;
@@ -67,18 +69,24 @@ type Schedule = {
   table_json: TableJson | null;
   image_url: string | null;
   created_at: string;
-  divisions?: {
+  divisions?: RelationArray<{
     name: string;
     slug: string;
-  } | null;
-  schedule_categories?: {
+  }>;
+  schedule_categories?: RelationArray<{
     name: string;
-  } | null;
-  churches?: {
+  }>;
+  churches?: RelationArray<{
     name: string;
     slug: string;
-  } | null;
+  }>;
 };
+
+function firstRelation<T>(value: RelationArray<T> | undefined): T | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 function isNewTable(table: TableJson): table is NewTableJson {
   return "groups" in table && Array.isArray(table.groups);
@@ -210,7 +218,7 @@ export default function ScheduleDetailPage() {
         console.log("Schedule detail error:", error);
       }
 
-      const scheduleData = (data as Schedule) ?? null;
+      const scheduleData = (data as unknown as Schedule) ?? null;
 
       if (!scheduleData) {
         setSchedule(null);
@@ -318,6 +326,9 @@ export default function ScheduleDetailPage() {
     );
   }
 
+  const division = firstRelation(schedule.divisions);
+  const category = firstRelation(schedule.schedule_categories);
+  const church = firstRelation(schedule.churches);
   const calendarUrl = createGoogleCalendarUrl(schedule);
 
   return (
@@ -345,7 +356,7 @@ export default function ScheduleDetailPage() {
           <div className="grid gap-10 lg:grid-cols-[1fr_420px] lg:items-end">
             <div>
               <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
-                {schedule.divisions?.name ?? "Schedule"}
+                {division?.name ?? "Schedule"}
               </p>
 
               <h1 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.05em] text-white md:text-7xl">
@@ -421,12 +432,9 @@ export default function ScheduleDetailPage() {
       <section className="relative z-20 -mt-16 rounded-t-[3rem] bg-slate-50 px-8 py-16 md:px-14">
         <div className="mx-auto max-w-[1500px]">
           <div className="mb-8 grid gap-4 md:grid-cols-4">
-            <InfoCard label="Church" value={schedule.churches?.name ?? "-"} />
-            <InfoCard label="Division" value={schedule.divisions?.name ?? "-"} />
-            <InfoCard
-              label="Category"
-              value={schedule.schedule_categories?.name ?? "-"}
-            />
+            <InfoCard label="Church" value={church?.name ?? "-"} />
+            <InfoCard label="Division" value={division?.name ?? "-"} />
+            <InfoCard label="Category" value={category?.name ?? "-"} />
             <InfoCard label="Visibility" value={schedule.visibility} />
           </div>
 
@@ -622,13 +630,16 @@ function InfoCard({ label, value }: { label: string; value: string }) {
 }
 
 function createGoogleCalendarUrl(schedule: Schedule) {
+  const division = firstRelation(schedule.divisions);
+  const church = firstRelation(schedule.churches);
+
   const title = encodeURIComponent(schedule.title);
   const details = encodeURIComponent(
     `${schedule.description ?? "Jadwal pelayanan"}\n\nDivision: ${
-      schedule.divisions?.name ?? "-"
+      division?.name ?? "-"
     }`
   );
-  const location = encodeURIComponent(schedule.churches?.name ?? "");
+  const location = encodeURIComponent(church?.name ?? "");
 
   const scheduleDate = getPrimaryScheduleDate(schedule);
   const { startTime, endTime } = getPrimaryScheduleTime(schedule);

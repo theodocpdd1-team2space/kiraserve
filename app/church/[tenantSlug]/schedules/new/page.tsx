@@ -6,6 +6,8 @@ import AppNavbar from "@/components/AppNavbar";
 import { supabase } from "@/lib/supabase/client";
 import { getChurchAccess } from "@/lib/church/access";
 
+type RelationArray<T> = T[] | T | null;
+
 type Division = {
   id: string;
   name: string;
@@ -52,16 +54,25 @@ type BuilderGroup = {
   rows: BuilderRow[];
 };
 
+type Profile = {
+  id: string;
+  name: string | null;
+  email: string;
+  avatar_url?: string | null;
+};
+
 type DivisionMember = {
   id: string;
   profile_id: string;
   role: string;
-  profiles: {
-    id: string;
-    name: string | null;
-    email: string;
-    avatar_url?: string | null;
-  } | null;
+  profiles: Profile | null;
+};
+
+type RawDivisionMember = {
+  id: string;
+  profile_id: string;
+  role: string;
+  profiles: RelationArray<Profile>;
 };
 
 type ServingRole = {
@@ -108,6 +119,12 @@ const productionRows = [
   "Foto 2",
   "Technician",
 ];
+
+function firstRelation<T>(value: RelationArray<T> | undefined): T | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 function makeId() {
   return Math.random().toString(36).slice(2, 10);
@@ -180,7 +197,6 @@ function buildMonthlyDateColumns(firstDate?: string): BuilderColumn[] {
   const startDate = new Date(`${firstDate}T00:00:00`);
   const targetMonth = startDate.getMonth();
   const columns: BuilderColumn[] = [];
-
   const current = new Date(startDate);
 
   while (current.getMonth() === targetMonth) {
@@ -282,6 +298,17 @@ function normalizeRole(value: string) {
     .replace(/\d+/g, "")
     .replace(/\([^)]*\)/g, "")
     .replace(/[^a-z]/g, "");
+}
+
+function normalizeDivisionMembers(data: unknown): DivisionMember[] {
+  const rows = (data as RawDivisionMember[] | null) ?? [];
+
+  return rows.map((member) => ({
+    id: member.id,
+    profile_id: member.profile_id,
+    role: member.role,
+    profiles: firstRelation(member.profiles),
+  }));
 }
 
 export default function NewSchedulePage() {
@@ -405,8 +432,9 @@ export default function NewSchedulePage() {
         .eq("role", "DIVISION_COORDINATOR");
 
       const coordinatorDivisions =
-        coordinatorData?.map((item: any) => item.divisions).filter(Boolean) ??
-        [];
+        coordinatorData
+          ?.map((item: any) => firstRelation(item.divisions))
+          .filter(Boolean) ?? [];
 
       const canCreateSchedule =
         access.isPlatformAdmin ||
@@ -426,9 +454,9 @@ export default function NewSchedulePage() {
           .eq("church_id", access.churchId)
           .order("name");
 
-        setDivisions(divisionsData ?? []);
+        setDivisions((divisionsData as Division[] | null) ?? []);
       } else {
-        setDivisions(coordinatorDivisions);
+        setDivisions(coordinatorDivisions as Division[]);
       }
 
       setPageLoading(false);
@@ -467,11 +495,11 @@ export default function NewSchedulePage() {
           .eq("division_id", divisionId)
           .order("name");
 
-        setCategories(freshCategories ?? []);
+        setCategories((freshCategories as Category[] | null) ?? []);
         return;
       }
 
-      setCategories(existingCategories ?? []);
+      setCategories((existingCategories as Category[] | null) ?? []);
     };
 
     loadCategories();
@@ -504,7 +532,7 @@ export default function NewSchedulePage() {
         .eq("division_id", divisionId)
         .order("role");
 
-      setDivisionMembers((membersData as DivisionMember[]) ?? []);
+      setDivisionMembers(normalizeDivisionMembers(membersData));
 
       const { data: servingRolesData } = await supabase
         .from("division_serving_roles")
@@ -512,7 +540,7 @@ export default function NewSchedulePage() {
         .eq("division_id", divisionId)
         .order("name");
 
-      setServingRoles((servingRolesData as ServingRole[]) ?? []);
+      setServingRoles((servingRolesData as unknown as ServingRole[]) ?? []);
 
       const { data: memberRolesData } = await supabase
         .from("member_serving_roles")
@@ -529,13 +557,15 @@ export default function NewSchedulePage() {
         )
         .eq("division_id", divisionId);
 
-      setMemberServingRoles((memberRolesData as MemberServingRole[]) ?? []);
+      setMemberServingRoles(
+        (memberRolesData as unknown as MemberServingRole[]) ?? []
+      );
     };
 
     loadDivisionPeople();
   }, [divisionId]);
 
-  const getSuggestedMembersForRow = (rowLabel: string) => {
+  const getSuggestedMembersForRow = (rowLabel: string): Profile[] => {
     const rowRoleKey = normalizeRole(rowLabel);
 
     const matchedServingRoles = servingRoles.filter((role) => {
@@ -552,7 +582,7 @@ export default function NewSchedulePage() {
     if (matchedRoleIds.length === 0) {
       return divisionMembers
         .map((member) => member.profiles)
-        .filter(Boolean)
+        .filter((profile): profile is Profile => Boolean(profile))
         .slice(0, 8);
     }
 
@@ -563,18 +593,19 @@ export default function NewSchedulePage() {
     const uniqueProfileIds = Array.from(new Set(allowedProfileIds));
 
     return uniqueProfileIds
-      .map((profileId) => {
-        return divisionMembers.find((member) => member.profile_id === profileId)
-          ?.profiles;
+      .map((targetProfileId) => {
+        return divisionMembers.find(
+          (member) => member.profile_id === targetProfileId
+        )?.profiles;
       })
-      .filter(Boolean);
+      .filter((profile): profile is Profile => Boolean(profile));
   };
 
   const applySuggestedMember = (
     groupIndex: number,
     rowIndex: number,
     cellIndex: number,
-    profile: DivisionMember["profiles"]
+    profile: Profile | null | undefined
   ) => {
     if (!profile) return;
 
@@ -1514,7 +1545,7 @@ export default function NewSchedulePage() {
                                           .slice(0, 3)
                                           .map((profile) => (
                                             <button
-                                              key={profile?.id}
+                                              key={profile.id}
                                               type="button"
                                               onClick={() =>
                                                 applySuggestedMember(
@@ -1525,11 +1556,11 @@ export default function NewSchedulePage() {
                                                 )
                                               }
                                               className="rounded-lg border border-blue-100 bg-white px-2 py-1 text-[10px] font-black text-blue-600 shadow-lg shadow-slate-200/70 hover:bg-blue-600 hover:text-white"
-                                              title={profile?.email}
+                                              title={profile.email}
                                             >
                                               {(
-                                                profile?.name ||
-                                                profile?.email ||
+                                                profile.name ||
+                                                profile.email ||
                                                 "?"
                                               )
                                                 .split(" ")[0]
