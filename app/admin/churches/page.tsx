@@ -57,8 +57,17 @@ export default function AdminChurchesPage() {
         console.log("Admins error:", adminsError);
       }
 
+      const mappedAdmins =
+        adminsData?.map((item: any) => ({
+          church_id: item.church_id,
+          role: item.role,
+          profiles: Array.isArray(item.profiles)
+            ? item.profiles[0] ?? null
+            : item.profiles,
+        })) ?? [];
+
       setChurches((churchesData as Church[]) ?? []);
-      setAdmins((adminsData as ChurchAdmin[]) ?? []);
+      setAdmins(mappedAdmins as ChurchAdmin[]);
       setLoading(false);
     };
 
@@ -120,11 +129,13 @@ export default function AdminChurchesPage() {
               value={String(churches.length)}
               desc="Tenant gereja yang sudah dibuat."
             />
+
             <StatCard
               label="Active Churches"
               value={String(churches.length)}
               desc="Untuk MVP, semua tenant dianggap aktif."
             />
+
             <StatCard
               label="Church Admins"
               value={String(admins.length)}
@@ -138,6 +149,7 @@ export default function AdminChurchesPage() {
                 <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
                   Tenant List
                 </p>
+
                 <h2 className="mt-3 text-4xl font-black tracking-[-0.05em] text-slate-900">
                   Gereja Terdaftar
                 </h2>

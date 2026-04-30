@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import AppNavbar from "@/components/AppNavbar";
 import { supabase } from "@/lib/supabase/client";
+import { getChurchAccess } from "@/lib/church/access";
 
 type Profile = {
   id: string;
@@ -40,8 +42,12 @@ type InviteCode = {
 };
 
 export default function InviteCodesPage() {
+  const params = useParams();
+  const tenantSlug = String(params.tenantSlug);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [church, setChurch] = useState<Church | null>(null);
@@ -63,69 +69,60 @@ export default function InviteCodesPage() {
   const loadData = async () => {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const access = await getChurchAccess(tenantSlug);
 
-    if (!user?.email) {
-      setLoading(false);
+    if (!access.allowed) {
+      setRedirecting(true);
+      window.location.href = "/dashboard";
       return;
     }
 
-    const { data: profileData } = await supabase
+    setChurchRole(access.churchRole);
+    setIsPlatformAdmin(access.isPlatformAdmin);
+
+    if (!access.profileId || !access.churchId) {
+      setRedirecting(true);
+      window.location.href = "/dashboard";
+      return;
+    }
+
+    const { data: profileData, error: profileError } = await supabase
       .from("profiles")
       .select("id, email, name")
-      .eq("email", user.email)
+      .eq("id", access.profileId)
       .maybeSingle();
 
+    if (profileError) {
+      console.log("Profile error:", profileError);
+    }
+
     if (!profileData) {
-      setLoading(false);
+      setRedirecting(true);
+      window.location.href = "/dashboard";
       return;
     }
 
     setProfile(profileData);
 
-    const { data: platformAdminData } = await supabase
-      .from("platform_admins")
-      .select("role")
-      .eq("profile_id", profileData.id)
-      .maybeSingle();
-
-    const platformAdmin =
-      platformAdminData?.role === "KIRASERVE_SUPER_ADMIN";
-    setIsPlatformAdmin(platformAdmin);
-
-    const { data: churchData } = await supabase
+    const { data: churchData, error: churchError } = await supabase
       .from("churches")
       .select("id, name, slug")
-      .eq("slug", "gsjs")
+      .eq("id", access.churchId)
       .maybeSingle();
 
+    if (churchError) {
+      console.log("Church error:", churchError);
+    }
+
     if (!churchData) {
-      setLoading(false);
+      setRedirecting(true);
+      window.location.href = "/dashboard";
       return;
     }
 
     setChurch(churchData);
 
-    const { data: churchMemberData } = await supabase
-      .from("church_members")
-      .select("role")
-      .eq("church_id", churchData.id)
-      .eq("profile_id", profileData.id)
-      .maybeSingle();
-
-    setChurchRole(churchMemberData?.role ?? null);
-
-    const { data: divisionsData } = await supabase
-      .from("divisions")
-      .select("id, name, slug")
-      .eq("church_id", churchData.id)
-      .order("name");
-
-    setDivisions(divisionsData ?? []);
-
-    const { data: coordinatorData } = await supabase
+    const { data: coordinatorData, error: coordinatorError } = await supabase
       .from("division_members")
       .select(
         `
@@ -138,15 +135,48 @@ export default function InviteCodesPage() {
       `
       )
       .eq("church_id", churchData.id)
-      .eq("profile_id", profileData.id)
+      .eq("profile_id", access.profileId)
       .eq("role", "DIVISION_COORDINATOR");
 
+    if (coordinatorError) {
+      console.log("Coordinator divisions error:", coordinatorError);
+    }
+
     const mappedCoordinatorDivisions =
-      coordinatorData?.map((item: any) => item.divisions).filter(Boolean) ?? [];
+      coordinatorData
+        ?.map((item: any) =>
+          Array.isArray(item.divisions)
+            ? item.divisions[0] ?? null
+            : item.divisions
+        )
+        .filter(Boolean) ?? [];
 
-    setCoordinatorDivisions(mappedCoordinatorDivisions);
+    setCoordinatorDivisions(mappedCoordinatorDivisions as Division[]);
 
-    const { data: codesData } = await supabase
+    const canCreateInvite =
+      access.isPlatformAdmin ||
+      access.churchRole === "CHURCH_ADMIN" ||
+      mappedCoordinatorDivisions.length > 0;
+
+    if (!canCreateInvite) {
+      setRedirecting(true);
+      window.location.href = `/church/${tenantSlug}/dashboard`;
+      return;
+    }
+
+    const { data: divisionsData, error: divisionsError } = await supabase
+      .from("divisions")
+      .select("id, name, slug")
+      .eq("church_id", churchData.id)
+      .order("name");
+
+    if (divisionsError) {
+      console.log("Divisions error:", divisionsError);
+    }
+
+    setDivisions((divisionsData as Division[]) ?? []);
+
+    const { data: codesData, error: codesError } = await supabase
       .from("invite_codes")
       .select(
         `
@@ -169,15 +199,42 @@ export default function InviteCodesPage() {
       .eq("church_id", churchData.id)
       .order("created_at", { ascending: false });
 
-    setInviteCodes((codesData as InviteCode[]) ?? []);
+    if (codesError) {
+      console.log("Invite codes error:", codesError);
+    }
+
+    const mappedInviteCodes =
+      codesData?.map((item: any) => ({
+        id: item.id,
+        code: item.code,
+        role_to_assign: item.role_to_assign,
+        max_uses: item.max_uses,
+        used_count: item.used_count,
+        expires_at: item.expires_at,
+        is_active: item.is_active,
+        created_at: item.created_at,
+        churches: Array.isArray(item.churches)
+          ? item.churches[0] ?? null
+          : item.churches,
+        divisions: Array.isArray(item.divisions)
+          ? item.divisions[0] ?? null
+          : item.divisions,
+      })) ?? [];
+
+    setInviteCodes(mappedInviteCodes as InviteCode[]);
     setLoading(false);
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (tenantSlug) {
+      loadData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantSlug]);
 
-  const canCreateCoordinatorCode = isPlatformAdmin || churchRole === "CHURCH_ADMIN";
+  const canCreateCoordinatorCode =
+    isPlatformAdmin || churchRole === "CHURCH_ADMIN";
+
   const canCreateServantCode =
     isPlatformAdmin ||
     churchRole === "CHURCH_ADMIN" ||
@@ -194,6 +251,7 @@ export default function InviteCodesPage() {
 
     const divisionName =
       divisions.find((division) => division.id === divisionId)?.slug ??
+      church?.slug ??
       "church";
 
     const random = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -217,16 +275,31 @@ export default function InviteCodesPage() {
       return;
     }
 
-    if (roleToAssign !== "SERVANT" && !divisionId) {
+    if (roleToAssign === "DIVISION_COORDINATOR" && !divisionId) {
       setStatus("Kode koordinator harus memilih divisi.");
       return;
     }
 
-    if (roleToAssign === "SERVANT" && coordinatorDivisions.length > 0 && !churchRole) {
-      if (!divisionId) {
-        setStatus("Koordinator harus memilih divisi untuk kode servant.");
-        return;
-      }
+    if (
+      roleToAssign === "SERVANT" &&
+      churchRole !== "CHURCH_ADMIN" &&
+      !isPlatformAdmin &&
+      coordinatorDivisions.length > 0 &&
+      !divisionId
+    ) {
+      setStatus("Koordinator harus memilih divisi untuk kode servant.");
+      return;
+    }
+
+    if (
+      roleToAssign === "SERVANT" &&
+      churchRole !== "CHURCH_ADMIN" &&
+      !isPlatformAdmin &&
+      divisionId &&
+      !coordinatorDivisions.some((division) => division.id === divisionId)
+    ) {
+      setStatus("Koordinator hanya bisa membuat kode untuk divisinya sendiri.");
+      return;
     }
 
     setSaving(true);
@@ -263,13 +336,16 @@ export default function InviteCodesPage() {
   };
 
   const handleDeactivateCode = async (id: string) => {
+    if (!church) return;
+
     const confirmed = window.confirm("Nonaktifkan invite code ini?");
     if (!confirmed) return;
 
     const { error } = await supabase
       .from("invite_codes")
       .update({ is_active: false })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("church_id", church.id);
 
     if (error) {
       setStatus(error.message);
@@ -285,13 +361,18 @@ export default function InviteCodesPage() {
     setStatus(`Kode ${code} berhasil dicopy.`);
   };
 
-  if (loading) {
+  if (loading || redirecting) {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-800">
-        <AppNavbar isPlatformAdmin={isPlatformAdmin} churchRole={churchRole} />
+        <AppNavbar
+          mode="church"
+          tenantSlug={tenantSlug}
+          isPlatformAdmin={isPlatformAdmin}
+          churchRole={churchRole}
+        />
         <div className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
           <p className="text-lg font-bold text-slate-500">
-            Loading invite codes...
+            {redirecting ? "Redirecting..." : "Loading invite codes..."}
           </p>
         </div>
       </main>
@@ -301,7 +382,7 @@ export default function InviteCodesPage() {
   if (!profile) {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-800">
-        <AppNavbar />
+        <AppNavbar mode="central" />
         <div className="mx-auto max-w-[900px] px-8 py-24 text-center md:px-14">
           <h1 className="text-5xl font-black tracking-[-0.05em] text-slate-900">
             Anda belum login.
@@ -322,7 +403,12 @@ export default function InviteCodesPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
-      <AppNavbar isPlatformAdmin={isPlatformAdmin} churchRole={churchRole} />
+      <AppNavbar
+        mode="church"
+        tenantSlug={tenantSlug}
+        isPlatformAdmin={isPlatformAdmin}
+        churchRole={churchRole}
+      />
 
       <section className="relative overflow-hidden px-8 pb-24 pt-16 md:px-14">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-indigo-950 to-blue-900" />
@@ -330,6 +416,13 @@ export default function InviteCodesPage() {
         <div className="absolute right-[-8%] top-[8%] h-[560px] w-[560px] rounded-full bg-cyan-400/10 blur-[140px]" />
 
         <div className="relative z-10 mx-auto max-w-[1400px]">
+          <a
+            href={`/church/${tenantSlug}/dashboard`}
+            className="mb-8 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur-md transition hover:bg-white/20 hover:text-white"
+          >
+            ← Church Dashboard
+          </a>
+
           <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
             Invite Codes
           </p>
@@ -470,7 +563,7 @@ export default function InviteCodesPage() {
               </div>
 
               <a
-                href="/join"
+                href={`/church/${tenantSlug}/join`}
                 className="w-fit rounded-full border border-slate-200 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600"
               >
                 Test Join Page

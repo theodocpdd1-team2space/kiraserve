@@ -1,309 +1,499 @@
-import AppNavbar from "@/components/AppNavbar";
+"use client";
 
-const stats = [
-  {
-    label: "Church Tenants",
-    value: "1",
-    desc: "Gereja yang sudah terdaftar di KiraServe.",
-  },
-  {
-    label: "Platform Admin",
-    value: "1",
-    desc: "Admin utama yang mengatur tenant.",
-  },
-  {
-    label: "Church Admin",
-    value: "1",
-    desc: "Admin gereja yang sudah diberi akses.",
-  },
-  {
-    label: "Invite Codes",
-    value: "Soon",
-    desc: "Kode join untuk onboarding member.",
-  },
-];
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
 
-const quickActions = [
-  {
-    title: "Create Church",
-    desc: "Buat tenant gereja baru dan assign Church Admin pertama.",
-    href: "/admin/churches/new",
-    label: "Create",
-  },
-  {
-    title: "Manage Churches",
-    desc: "Lihat daftar gereja yang sudah terdaftar di KiraServe.",
-    href: "/admin/churches",
-    label: "Open",
-  },
-  {
-    title: "Manage Users",
-    desc: "Lihat user, profile, dan role yang terhubung ke platform.",
-    href: "/admin/users",
-    label: "Open",
-  },
-  {
-    title: "Church Dashboard",
-    desc: "Masuk ke dashboard gereja untuk cek divisi dan jadwal.",
-    href: "/dashboard",
-    label: "Open",
-  },
-];
+type Profile = {
+  id: string;
+  name: string | null;
+  email: string;
+};
 
-const roadmap = [
-  {
-    title: "Tenant Gereja",
-    desc: "Super Admin membuat gereja baru di KiraServe.",
-  },
-  {
-    title: "Church Admin",
-    desc: "Super Admin memberi akses admin pertama untuk gereja.",
-  },
-  {
-    title: "Divisi",
-    desc: "Church Admin membuat divisi pelayanan seperti Production, Worship, Kids, dan lainnya.",
-  },
-  {
-    title: "Koordinator",
-    desc: "Church Admin dapat assign koordinator secara manual atau melalui join code.",
-  },
-  {
-    title: "Servant",
-    desc: "Pelayan dapat login, join memakai kode, lalu melihat jadwal pelayanan.",
-  },
-];
+type Church = {
+  id: string;
+  name: string;
+  slug: string;
+  custom_domain: string | null;
+  created_at: string;
+};
 
-const recentTenants = [
-  {
-    name: "GSJS Pakuwon Mall",
-    slug: "gsjs",
-    admin: "gsjschurchsites@gmail.com",
-    status: "Active",
-  },
+type PlatformStats = {
+  users: number;
+  churches: number;
+  divisions: number;
+  schedules: number;
+  inviteCodes: number;
+  pendingRequests: number;
+};
+
+const adminLinks = [
+  { label: "Overview", href: "/admin", active: true },
+  { label: "Tenants", href: "/admin/churches" },
+  { label: "Requests", href: "/admin/requests" },
+  { label: "Users", href: "/admin/users" },
+  { label: "Services", href: "/admin/services" },
+  { label: "Payments", href: "/admin/payments" },
+  { label: "System", href: "/admin/system" },
 ];
 
 export default function AdminPage() {
-  return (
-    <main className="min-h-screen bg-slate-50 text-slate-800">
-      <AppNavbar isPlatformAdmin />
+  const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
 
-      <section className="relative overflow-hidden px-8 pb-24 pt-16 md:px-14">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950" />
-        <div className="absolute -left-[10%] top-[-20%] h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[120px]" />
-        <div className="absolute right-[-8%] top-[8%] h-[560px] w-[560px] rounded-full bg-cyan-400/10 blur-[140px]" />
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<PlatformStats>({
+    users: 0,
+    churches: 0,
+    divisions: 0,
+    schedules: 0,
+    inviteCodes: 0,
+    pendingRequests: 0,
+  });
 
-        <div className="relative z-10 mx-auto max-w-[1400px]">
-          <div className="grid gap-10 lg:grid-cols-[1fr_420px] lg:items-end">
-            <div>
-              <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
-                KiraServe Admin
-              </p>
+  const [recentChurches, setRecentChurches] = useState<Church[]>([]);
+  const [status, setStatus] = useState("");
 
-              <h1 className="max-w-5xl text-5xl font-black leading-[0.95] tracking-[-0.05em] text-white md:text-7xl">
-                Platform control center.
-              </h1>
+  useEffect(() => {
+    const loadAdmin = async () => {
+      setLoading(true);
 
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-100/70">
-                Dashboard khusus Super Admin KiraServe untuk membuat tenant
-                gereja, memberi akses Church Admin, dan mengatur struktur awal
-                platform.
-              </p>
-            </div>
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-            <div className="rounded-[2rem] border border-white/10 bg-white/10 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
-              <p className="text-sm font-bold text-blue-100/70">
-                Quick Setup
-              </p>
+      if (!user?.email) {
+        window.location.href = "/login";
+        return;
+      }
 
-              <h2 className="mt-3 text-3xl font-black tracking-[-0.05em] text-white">
-                Tambah gereja baru
-              </h2>
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, name, email")
+        .eq("email", user.email)
+        .maybeSingle();
 
-              <p className="mt-3 text-sm leading-6 text-blue-100/60">
-                Buat tenant gereja, tentukan slug, lalu assign email pertama
-                sebagai Church Admin.
-              </p>
+      if (profileError || !profileData) {
+        setStatus("Profile tidak ditemukan.");
+        setLoading(false);
+        return;
+      }
 
-              <a
-                href="/admin/churches/new"
-                className="mt-6 inline-flex w-full justify-center rounded-full bg-white px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-900 transition hover:-translate-y-0.5 hover:bg-blue-100"
-              >
-                Create Church →
-              </a>
-            </div>
+      setProfile(profileData);
+
+      const { data: platformAdminData } = await supabase
+        .from("platform_admins")
+        .select("role")
+        .eq("profile_id", profileData.id)
+        .maybeSingle();
+
+      const isSuperAdmin =
+        platformAdminData?.role === "KIRASERVE_SUPER_ADMIN";
+
+      if (!isSuperAdmin) {
+        setAuthorized(false);
+        setLoading(false);
+        return;
+      }
+
+      setAuthorized(true);
+
+      const [
+        profilesCount,
+        churchesCount,
+        divisionsCount,
+        schedulesCount,
+        inviteCodesCount,
+        churchesData,
+      ] = await Promise.all([
+        supabase.from("profiles").select("id", { count: "exact", head: true }),
+        supabase.from("churches").select("id", { count: "exact", head: true }),
+        supabase.from("divisions").select("id", { count: "exact", head: true }),
+        supabase.from("schedules").select("id", { count: "exact", head: true }),
+        supabase
+          .from("invite_codes")
+          .select("id", { count: "exact", head: true }),
+        supabase
+          .from("churches")
+          .select("id, name, slug, custom_domain, created_at")
+          .order("created_at", { ascending: false })
+          .limit(6),
+      ]);
+
+      setStats({
+        users: profilesCount.count ?? 0,
+        churches: churchesCount.count ?? 0,
+        divisions: divisionsCount.count ?? 0,
+        schedules: schedulesCount.count ?? 0,
+        inviteCodes: inviteCodesCount.count ?? 0,
+        pendingRequests: 0,
+      });
+
+      setRecentChurches((churchesData.data as Church[]) ?? []);
+      setLoading(false);
+    };
+
+    loadAdmin();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#F5F7FB] text-slate-900">
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-slate-200/70">
+            <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+              Loading Super Admin...
+            </p>
           </div>
         </div>
-      </section>
+      </main>
+    );
+  }
 
-      <section className="relative z-20 -mt-14 rounded-t-[3rem] bg-slate-50 px-8 py-14 md:px-14">
-        <div className="mx-auto max-w-[1400px]">
-          <div className="grid gap-4 md:grid-cols-4">
-            {stats.map((item) => (
-              <StatCard
-                key={item.label}
-                label={item.label}
-                value={item.value}
-                desc={item.desc}
-              />
-            ))}
+  if (!authorized) {
+    return (
+      <main className="min-h-screen bg-[#F5F7FB] text-slate-900">
+        <div className="mx-auto flex min-h-screen max-w-[900px] items-center justify-center px-8 text-center">
+          <div className="rounded-[2.5rem] bg-white p-10 shadow-xl shadow-slate-200/70">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-red-600">
+              Access Denied
+            </p>
+
+            <h1 className="mt-5 text-5xl font-black tracking-[-0.06em] text-slate-900">
+              Anda bukan Super Admin.
+            </h1>
+
+            <p className="mt-5 text-lg leading-8 text-slate-500">
+              Halaman ini hanya untuk akun platform admin KiraServe.
+            </p>
+
+            <a
+              href="/dashboard"
+              className="mt-8 inline-flex rounded-full bg-slate-900 px-8 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+            >
+              Back to Dashboard →
+            </a>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[#F5F7FB] text-slate-900">
+      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
+        <aside className="hidden border-r border-slate-200 bg-white lg:block">
+          <div className="flex h-20 items-center border-b border-slate-100 px-7">
+            <a
+              href="/admin"
+              className="text-2xl font-black tracking-[-0.06em] text-slate-900"
+            >
+              KiraServe
+            </a>
           </div>
 
-          <div className="mt-8 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-            <section className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60">
-              <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
-                    Quick Actions
-                  </p>
+          <div className="px-5 py-6">
+            <p className="mb-4 px-3 text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+              Platform Admin
+            </p>
 
-                  <h2 className="mt-3 text-4xl font-black tracking-[-0.05em] text-slate-900">
-                    Manage Platform
-                  </h2>
-                </div>
-
+            <nav className="grid gap-1">
+              {adminLinks.map((item) => (
                 <a
-                  href="/admin/churches"
-                  className="w-fit rounded-full border border-slate-200 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600"
+                  key={item.href}
+                  href={item.href}
+                  className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
+                    item.active
+                      ? "bg-slate-900 text-white shadow-lg shadow-slate-900/10"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-blue-600"
+                  }`}
                 >
-                  View Churches
+                  {item.label}
                 </a>
-              </div>
+              ))}
+            </nav>
 
-              <div className="grid gap-5 md:grid-cols-2">
-                {quickActions.map((item) => (
-                  <QuickActionCard key={item.title} item={item} />
-                ))}
-              </div>
-            </section>
+            <div className="mt-8 rounded-[1.5rem] bg-slate-50 p-5">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                Admin Domain
+              </p>
 
-            <section className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60">
-              <div className="mb-8">
-                <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
-                  Recent Tenants
+              <p className="mt-2 text-sm font-black text-slate-900">
+                admin.kiraserve.com
+              </p>
+
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Saat ini masih development via /admin.
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        <section className="min-w-0">
+          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
+            <div className="flex h-20 items-center justify-between px-6 md:px-8">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">
+                  Super Admin Dashboard
                 </p>
 
-                <h2 className="mt-3 text-4xl font-black tracking-[-0.05em] text-slate-900">
-                  Gereja Terdaftar
-                </h2>
+                <h1 className="mt-1 text-2xl font-black tracking-[-0.05em] text-slate-900">
+                  Platform Overview
+                </h1>
               </div>
 
-              <div className="grid gap-4">
-                {recentTenants.map((church) => (
-                  <div
-                    key={church.slug}
-                    className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-xl font-black tracking-[-0.04em] text-slate-900">
-                          {church.name}
-                        </h3>
+              <div className="flex items-center gap-3">
+                <a
+                  href="/dashboard"
+                  className="hidden rounded-full border border-slate-200 bg-white px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600 md:inline-flex"
+                >
+                  User Dashboard
+                </a>
 
-                        <p className="mt-2 text-sm text-slate-500">
-                          /{church.slug}
-                        </p>
-                      </div>
+                <div className="hidden rounded-full bg-slate-100 px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500 md:inline-flex">
+                  Super Admin
+                </div>
 
-                      <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-emerald-600">
-                        {church.status}
-                      </span>
-                    </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-full bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-red-600"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </header>
 
-                    <div className="mt-5 rounded-2xl bg-white p-4">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                        Church Admin
-                      </p>
+          <div className="px-6 py-8 md:px-8">
+            <div className="mb-8 rounded-[2rem] bg-slate-900 p-7 text-white shadow-xl shadow-slate-300/60">
+              <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-center">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-300">
+                    Welcome back
+                  </p>
 
-                      <p className="mt-2 text-sm font-bold text-slate-600">
-                        {church.admin}
-                      </p>
-                    </div>
+                  <h2 className="mt-3 text-4xl font-black tracking-[-0.06em]">
+                    KiraServe Control Center
+                  </h2>
+
+                  <p className="mt-4 max-w-2xl text-sm leading-7 text-white/60">
+                    Pantau tenant, user, request church, jadwal aktif, invite
+                    code, dan kesehatan platform dari satu dashboard.
+                  </p>
+                </div>
+
+                <div className="rounded-[1.5rem] bg-white/10 p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-white/45">
+                    Signed in as
+                  </p>
+
+                  <p className="mt-2 break-all text-lg font-black text-white">
+                    {profile?.email}
+                  </p>
+
+                  <p className="mt-2 text-sm text-white/50">
+                    KIRASERVE_SUPER_ADMIN
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <StatCard label="Users" value={stats.users} trend="+ live" />
+              <StatCard label="Tenants" value={stats.churches} trend="church" />
+              <StatCard label="Divisions" value={stats.divisions} trend="active" />
+              <StatCard label="Schedules" value={stats.schedules} trend="created" />
+              <StatCard label="Invite Codes" value={stats.inviteCodes} trend="issued" />
+              <StatCard label="Requests" value={stats.pendingRequests} trend="pending" />
+            </div>
+
+            <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_420px]">
+              <section className="rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/70">
+                <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">
+                      Tenant Management
+                    </p>
+
+                    <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-slate-900">
+                      Recent Church Tenants
+                    </h2>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <a
+                      href="/admin/churches/new"
+                      className="rounded-full bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+                    >
+                      Create Tenant
+                    </a>
 
                     <a
                       href="/admin/churches"
-                      className="mt-5 inline-flex text-xs font-black uppercase tracking-[0.14em] text-blue-600"
+                      className="rounded-full border border-slate-200 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600"
                     >
-                      Manage Tenant →
+                      View All
                     </a>
                   </div>
-                ))}
+                </div>
+
+                <div className="overflow-hidden rounded-[1.5rem] border border-slate-100">
+                  <table className="w-full min-w-[760px] border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Tenant
+                        </th>
+                        <th className="px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Slug
+                        </th>
+                        <th className="px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Domain
+                        </th>
+                        <th className="px-5 py-4 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Status
+                        </th>
+                        <th className="px-5 py-4 text-right text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                          Action
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {recentChurches.length > 0 ? (
+                        recentChurches.map((church) => (
+                          <tr
+                            key={church.id}
+                            className="border-t border-slate-100 bg-white"
+                          >
+                            <td className="px-5 py-4">
+                              <p className="font-black text-slate-900">
+                                {church.name}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                Created{" "}
+                                {new Date(church.created_at).toLocaleDateString(
+                                  "id-ID"
+                                )}
+                              </p>
+                            </td>
+
+                            <td className="px-5 py-4 text-sm font-bold text-slate-500">
+                              {church.slug}
+                            </td>
+
+                            <td className="px-5 py-4 text-sm text-slate-500">
+                              {church.custom_domain ?? "-"}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-600">
+                                Active
+                              </span>
+                            </td>
+
+                            <td className="px-5 py-4 text-right">
+                              <a
+                                href="/admin/churches"
+                                className="text-xs font-black uppercase tracking-[0.14em] text-blue-600 hover:text-blue-800"
+                              >
+                                Manage →
+                              </a>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            className="px-5 py-10 text-center text-sm font-bold text-slate-400"
+                          >
+                            Belum ada tenant.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <div className="grid gap-6">
+                <section className="rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/70">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">
+                    Pending Requests
+                  </p>
+
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-slate-900">
+                    Church Workspace
+                  </h2>
+
+                  <div className="mt-6 rounded-[1.5rem] bg-slate-50 p-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-4xl font-black tracking-[-0.06em] text-slate-900">
+                          {stats.pendingRequests}
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-slate-500">
+                          request pending
+                        </p>
+                      </div>
+
+                      <a
+                        href="/admin/requests"
+                        className="rounded-full bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+                      >
+                        Review
+                      </a>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/70">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">
+                    Platform Health
+                  </p>
+
+                  <h2 className="mt-2 text-2xl font-black tracking-[-0.05em] text-slate-900">
+                    System Status
+                  </h2>
+
+                  <div className="mt-6 grid gap-3">
+                    <HealthRow label="App Server" value="Online" />
+                    <HealthRow label="Database" value="Connected" />
+                    <HealthRow label="Email Sender" value="Ready" />
+                    <HealthRow label="Midtrans" value="Soon" />
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/70">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-blue-600">
+                    Quick Links
+                  </p>
+
+                  <div className="mt-5 grid gap-3">
+                    <QuickLink href="/admin/churches" label="Manage Tenants" />
+                    <QuickLink href="/admin/churches/new" label="Create Church Tenant" />
+                    <QuickLink href="/dashboard" label="Open User Dashboard" />
+                  </div>
+                </section>
               </div>
-            </section>
-          </div>
-
-          <div className="mt-8 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <section className="rounded-[2.5rem] bg-slate-900 p-8 text-white shadow-xl shadow-slate-200/60">
-              <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-300">
-                Free Platform
-              </p>
-
-              <h2 className="mt-3 text-4xl font-black leading-[0.95] tracking-[-0.05em]">
-                KiraServe dibuat gratis untuk gereja.
-              </h2>
-
-              <p className="mt-5 text-base leading-7 text-white/55">
-                Untuk versi awal, KiraServe tidak memakai plan atau billing.
-                Pengembangan platform dapat didukung melalui donasi developer.
-              </p>
-
-              <a
-                href="#"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-8 inline-flex rounded-full bg-white px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-900 transition hover:bg-blue-100"
-              >
-                Support Developer →
-              </a>
-
-              <p className="mt-4 text-xs leading-6 text-white/35">
-                Nanti link ini bisa diganti ke Socialbuzz.
-              </p>
-            </section>
-
-            <section className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60">
-              <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
-                Product Flow
-              </p>
-
-              <h2 className="mt-3 text-4xl font-black tracking-[-0.05em] text-slate-900">
-                Alur otorisasi platform
-              </h2>
-
-              <div className="mt-8 grid gap-4">
-                {roadmap.map((item, index) => (
-                  <FlowRow
-                    key={item.title}
-                    number={String(index + 1).padStart(2, "0")}
-                    title={item.title}
-                    desc={item.desc}
-                  />
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <section className="mt-8 rounded-[2.5rem] border border-blue-100 bg-blue-50 p-8">
-            <div className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
-                  Next Feature
-                </p>
-
-                <h2 className="mt-3 text-4xl font-black leading-[0.95] tracking-[-0.05em] text-slate-900">
-                  Invite Code System
-                </h2>
-              </div>
-
-              <p className="text-base font-bold leading-8 text-blue-700">
-                User bisa login sendiri. Kalau belum tergabung ke gereja mana
-                pun, user masuk ke halaman join code. Church Admin atau
-                Koordinator bisa generate kode untuk servant/member dalam
-                periode tertentu, sehingga tidak perlu assign satu per satu.
-              </p>
             </div>
-          </section>
-        </div>
-      </section>
+
+            {status && (
+              <div className="mt-8 rounded-[1.5rem] border border-blue-100 bg-blue-50 p-5">
+                <p className="text-sm font-bold leading-7 text-blue-700">
+                  {status}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
@@ -311,83 +501,50 @@ export default function AdminPage() {
 function StatCard({
   label,
   value,
-  desc,
+  trend,
 }: {
   label: string;
-  value: string;
-  desc: string;
+  value: number;
+  trend: string;
 }) {
   return (
-    <article className="rounded-[2rem] bg-white p-7 shadow-xl shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-900/10">
-      <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-        {label}
-      </p>
+    <article className="rounded-[1.5rem] bg-white p-5 shadow-xl shadow-slate-200/70">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+            {label}
+          </p>
 
-      <p className="mt-5 text-5xl font-black tracking-[-0.06em] text-slate-900">
-        {value}
-      </p>
+          <p className="mt-4 text-4xl font-black tracking-[-0.06em] text-slate-900">
+            {value}
+          </p>
+        </div>
 
-      <p className="mt-4 text-sm leading-6 text-slate-500">{desc}</p>
+        <span className="rounded-full bg-blue-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-600">
+          {trend}
+        </span>
+      </div>
     </article>
   );
 }
 
-function QuickActionCard({
-  item,
-}: {
-  item: {
-    title: string;
-    desc: string;
-    href: string;
-    label: string;
-  };
-}) {
+function HealthRow({ label, value }: { label: string; value: string }) {
   return (
-    <a
-      href={item.href}
-      className="group rounded-[2rem] border border-slate-100 bg-slate-50 p-6 transition hover:-translate-y-1 hover:border-blue-200 hover:bg-white hover:shadow-xl hover:shadow-blue-900/10"
-    >
-      <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-lg font-black text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
-        →
-      </div>
-
-      <h3 className="text-2xl font-black tracking-[-0.04em] text-slate-900">
-        {item.title}
-      </h3>
-
-      <p className="mt-3 min-h-[72px] text-sm leading-6 text-slate-500">
-        {item.desc}
-      </p>
-
-      <p className="mt-6 text-xs font-black uppercase tracking-[0.14em] text-blue-600">
-        {item.label} →
-      </p>
-    </a>
+    <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+      <p className="text-sm font-bold text-slate-500">{label}</p>
+      <p className="text-sm font-black text-emerald-600">{value}</p>
+    </div>
   );
 }
 
-function FlowRow({
-  number,
-  title,
-  desc,
-}: {
-  number: string;
-  title: string;
-  desc: string;
-}) {
+function QuickLink({ href, label }: { href: string; label: string }) {
   return (
-    <div className="grid gap-4 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 md:grid-cols-[80px_1fr] md:items-center">
-      <p className="text-3xl font-black tracking-[-0.06em] text-blue-600">
-        {number}
-      </p>
-
-      <div>
-        <h3 className="text-xl font-black tracking-[-0.04em] text-slate-900">
-          {title}
-        </h3>
-
-        <p className="mt-2 text-sm leading-6 text-slate-500">{desc}</p>
-      </div>
-    </div>
+    <a
+      href={href}
+      className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-blue-50 hover:text-blue-600"
+    >
+      {label}
+      <span>→</span>
+    </a>
   );
 }

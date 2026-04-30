@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import AppNavbar from "@/components/AppNavbar";
 import { supabase } from "@/lib/supabase/client";
 
@@ -25,6 +26,9 @@ type InviteCode = {
 };
 
 export default function JoinPage() {
+  const params = useParams();
+  const tenantSlug = String(params.tenantSlug);
+
   const [code, setCode] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -125,7 +129,13 @@ export default function JoinPage() {
       return;
     }
 
-    const codeData = inviteCode as InviteCode;
+    const codeData = mapInviteCode(inviteCode);
+
+    if (!codeData.churches?.slug) {
+      setLoading(false);
+      setStatus("Data church dari invite code tidak ditemukan.");
+      return;
+    }
 
     if (!codeData.is_active) {
       setLoading(false);
@@ -133,7 +143,10 @@ export default function JoinPage() {
       return;
     }
 
-    if (codeData.expires_at && new Date(codeData.expires_at).getTime() < Date.now()) {
+    if (
+      codeData.expires_at &&
+      new Date(codeData.expires_at).getTime() < Date.now()
+    ) {
       setLoading(false);
       setStatus("Invite code sudah expired.");
       return;
@@ -145,21 +158,29 @@ export default function JoinPage() {
       return;
     }
 
-    const { data: existingUse } = await supabase
+    const { data: existingUse, error: existingUseError } = await supabase
       .from("invite_code_uses")
       .select("id")
       .eq("invite_code_id", codeData.id)
       .eq("profile_id", profileId)
       .maybeSingle();
 
-    if (existingUse) {
+    if (existingUseError) {
       setLoading(false);
-      setJoinedData(codeData);
-      setStatus("Anda sudah pernah menggunakan invite code ini.");
+      setStatus(existingUseError.message);
       return;
     }
 
-    setStatus("Menghubungkan Anda ke gereja...");
+    if (existingUse) {
+      setLoading(false);
+      setJoinedData(codeData);
+      setStatus(
+        `Anda sudah pernah menggunakan invite code ini. Akses ke ${codeData.churches.name} sudah aktif.`
+      );
+      return;
+    }
+
+    setStatus(`Menghubungkan Anda ke ${codeData.churches.name}...`);
 
     const churchRole =
       codeData.role_to_assign === "CHURCH_ADMIN" ? "CHURCH_ADMIN" : "SERVANT";
@@ -184,7 +205,7 @@ export default function JoinPage() {
     }
 
     if (codeData.division_id) {
-      setStatus("Menghubungkan Anda ke divisi...");
+      setStatus(`Menghubungkan Anda ke divisi ${codeData.divisions?.name}...`);
 
       const divisionRole =
         codeData.role_to_assign === "DIVISION_COORDINATOR"
@@ -228,7 +249,8 @@ export default function JoinPage() {
       .update({
         used_count: codeData.used_count + 1,
       })
-      .eq("id", codeData.id);
+      .eq("id", codeData.id)
+      .eq("church_id", codeData.church_id);
 
     if (updateError) {
       setLoading(false);
@@ -238,12 +260,16 @@ export default function JoinPage() {
 
     setLoading(false);
     setJoinedData(codeData);
-    setStatus("Berhasil join. Anda sudah mendapatkan akses.");
+    setStatus(
+      `Berhasil join ${codeData.churches.name}. Anda sudah mendapatkan akses.`
+    );
   };
+
+  const detectedChurchSlug = joinedData?.churches?.slug ?? tenantSlug;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-800">
-      <AppNavbar />
+      <AppNavbar mode="central" />
 
       <section className="relative overflow-hidden px-8 pb-24 pt-16 md:px-14">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-indigo-950 to-blue-900" />
@@ -251,6 +277,13 @@ export default function JoinPage() {
         <div className="absolute right-[-8%] top-[8%] h-[560px] w-[560px] rounded-full bg-cyan-400/10 blur-[140px]" />
 
         <div className="relative z-10 mx-auto max-w-[1100px]">
+          <a
+            href="/dashboard"
+            className="mb-10 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur-md transition hover:bg-white/20 hover:text-white"
+          >
+            ← Central Dashboard
+          </a>
+
           <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
             Join KiraServe
           </p>
@@ -260,8 +293,8 @@ export default function JoinPage() {
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-100/70">
-            Gunakan kode yang diberikan oleh Church Admin atau Koordinator
-            Pelayanan untuk bergabung ke gereja/divisi Anda.
+            Sistem akan otomatis mendeteksi church dan divisi dari invite code
+            yang Anda masukkan.
           </p>
         </div>
       </section>
@@ -274,18 +307,19 @@ export default function JoinPage() {
             </p>
 
             <h2 className="mt-3 text-4xl font-black leading-[0.95] tracking-[-0.05em] text-slate-900">
-              Join tanpa assign manual.
+              Join otomatis berdasarkan kode.
             </h2>
 
             <p className="mt-5 text-base leading-7 text-slate-500">
-              Admin atau koordinator bisa generate kode, lalu membagikannya ke
-              grup WhatsApp. User cukup login dan memasukkan kode tersebut.
+              Anda tidak perlu memilih gereja secara manual. Setiap invite code
+              sudah terhubung ke church dan divisi tertentu.
             </p>
 
             <div className="mt-8 grid gap-4">
               <Step number="01" title="Login pakai email" />
               <Step number="02" title="Masukkan kode undangan" />
-              <Step number="03" title="Akses gereja/divisi otomatis aktif" />
+              <Step number="03" title="Sistem mendeteksi church/divisi" />
+              <Step number="04" title="Akses otomatis aktif" />
             </div>
           </div>
 
@@ -347,15 +381,25 @@ export default function JoinPage() {
                   <p className="mt-3 text-sm leading-7 text-emerald-700">
                     Role: <b>{joinedData.role_to_assign}</b>
                     <br />
-                    Divisi: <b>{joinedData.divisions?.name ?? "Church Level"}</b>
+                    Divisi:{" "}
+                    <b>{joinedData.divisions?.name ?? "Church Level"}</b>
                   </p>
 
-                  <a
-                    href="/dashboard"
-                    className="mt-6 inline-flex rounded-full bg-slate-900 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
-                  >
-                    Go to Dashboard →
-                  </a>
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <a
+                      href={`/church/${detectedChurchSlug}/dashboard`}
+                      className="inline-flex rounded-full bg-slate-900 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+                    >
+                      Open Church →
+                    </a>
+
+                    <a
+                      href="/dashboard"
+                      className="inline-flex rounded-full border border-emerald-200 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
+                    >
+                      Central Dashboard
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
@@ -364,6 +408,26 @@ export default function JoinPage() {
       </section>
     </main>
   );
+}
+
+function mapInviteCode(raw: any): InviteCode {
+  return {
+    id: raw.id,
+    church_id: raw.church_id,
+    division_id: raw.division_id,
+    code: raw.code,
+    role_to_assign: raw.role_to_assign,
+    max_uses: raw.max_uses,
+    used_count: raw.used_count,
+    expires_at: raw.expires_at,
+    is_active: raw.is_active,
+    churches: Array.isArray(raw.churches)
+      ? raw.churches[0] ?? null
+      : raw.churches,
+    divisions: Array.isArray(raw.divisions)
+      ? raw.divisions[0] ?? null
+      : raw.divisions,
+  };
 }
 
 function Step({ number, title }: { number: string; title: string }) {
