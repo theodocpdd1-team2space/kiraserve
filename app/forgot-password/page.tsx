@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<ForgotPasswordLoading />}>
+      <ForgotPasswordContent />
+    </Suspense>
+  );
+}
+
+function ForgotPasswordContent() {
   const searchParams = useSearchParams();
   const emailFromUrl = searchParams.get("email") ?? "";
 
@@ -168,6 +176,18 @@ export default function ForgotPasswordPage() {
           </p>
         </div>
       </section>
+    </main>
+  );
+}
+
+function ForgotPasswordLoading() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#eef7ff] px-5 text-slate-900">
+      <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-blue-200/40">
+        <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+          Loading forgot password...
+        </p>
+      </div>
     </main>
   );
 }
