@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginLoading />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -96,15 +104,7 @@ export default function LoginPage() {
   }`;
 
   if (checkingSession) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#eef7ff] px-5 text-slate-900">
-        <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-blue-200/40">
-          <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">
-            Checking session...
-          </p>
-        </div>
-      </main>
-    );
+    return <LoginLoading />;
   }
 
   return (
@@ -309,6 +309,18 @@ export default function LoginPage() {
           </div>
         </div>
       </section>
+    </main>
+  );
+}
+
+function LoginLoading() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#eef7ff] px-5 text-slate-900">
+      <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-blue-200/40">
+        <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-400">
+          Loading login...
+        </p>
+      </div>
     </main>
   );
 }
