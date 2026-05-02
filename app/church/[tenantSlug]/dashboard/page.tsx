@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AppNavbar from "@/components/AppNavbar";
 import { supabase } from "@/lib/supabase/client";
 import { getChurchAccess } from "@/lib/church/access";
+
+type RelationArray<T> = T[] | T | null;
 
 type Profile = {
   id: string;
@@ -32,13 +35,24 @@ type Schedule = {
   description: string | null;
   visibility: string;
   share_slug: string | null;
-  divisions?: {
+  divisions?: RelationArray<{
     name: string;
-  } | null;
-  schedule_categories?: {
+  }>;
+  schedule_categories?: RelationArray<{
     name: string;
-  } | null;
+  }>;
 };
+
+type DivisionMembership = {
+  role: string;
+  divisions: RelationArray<Division>;
+};
+
+function firstRelation<T>(value: RelationArray<T> | undefined): T | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 export default function ChurchDashboardPage() {
   const params = useParams();
@@ -94,7 +108,7 @@ export default function ChurchDashboardPage() {
         return;
       }
 
-      setProfile(profileData);
+      setProfile(profileData as Profile | null);
 
       const { data: churchData, error: churchError } = await supabase
         .from("churches")
@@ -112,7 +126,7 @@ export default function ChurchDashboardPage() {
         return;
       }
 
-      setChurch(churchData);
+      setChurch(churchData as Church);
 
       const { data: divisionsData, error: divisionsError } = await supabase
         .from("divisions")
@@ -148,26 +162,23 @@ export default function ChurchDashboardPage() {
       }
 
       const mappedDivisionMembership =
-        divisionMembershipData?.map((item: any) => ({
+        ((divisionMembershipData as unknown as DivisionMembership[] | null) ??
+          []).map((item) => ({
           role: item.role,
-          divisions: Array.isArray(item.divisions)
-            ? item.divisions[0] ?? null
-            : item.divisions,
-        })) ?? [];
+          division: firstRelation(item.divisions),
+        }));
 
-      const coordinator =
-        mappedDivisionMembership
-          .filter((item: any) => item.role === "DIVISION_COORDINATOR")
-          .map((item: any) => item.divisions)
-          .filter(Boolean) ?? [];
+      const coordinator = mappedDivisionMembership
+        .filter((item) => item.role === "DIVISION_COORDINATOR")
+        .map((item) => item.division)
+        .filter(Boolean) as Division[];
 
-      const member =
-        mappedDivisionMembership
-          .map((item: any) => item.divisions)
-          .filter(Boolean) ?? [];
+      const member = mappedDivisionMembership
+        .map((item) => item.division)
+        .filter(Boolean) as Division[];
 
-      setCoordinatorDivisions(coordinator as Division[]);
-      setMemberDivisions(member as Division[]);
+      setCoordinatorDivisions(coordinator);
+      setMemberDivisions(member);
 
       const { data: schedulesData, error: schedulesError } = await supabase
         .from("schedules")
@@ -194,23 +205,7 @@ export default function ChurchDashboardPage() {
         console.log("Schedules error:", schedulesError);
       }
 
-      const mappedSchedules =
-        schedulesData?.map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          description: item.description,
-          visibility: item.visibility,
-          share_slug: item.share_slug,
-          divisions: Array.isArray(item.divisions)
-            ? item.divisions[0] ?? null
-            : item.divisions,
-          schedule_categories: Array.isArray(item.schedule_categories)
-            ? item.schedule_categories[0] ?? null
-            : item.schedule_categories,
-        })) ?? [];
-
-      setSchedules(mappedSchedules as Schedule[]);
-
+      setSchedules((schedulesData as unknown as Schedule[]) ?? []);
       setLoading(false);
     };
 
@@ -247,13 +242,23 @@ export default function ChurchDashboardPage() {
           churchRole={churchRole}
         />
 
-        <div className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
-          <p className="text-lg font-bold text-slate-500">
-            {redirecting
-              ? "Redirecting to central dashboard..."
-              : "Loading church dashboard..."}
-          </p>
-        </div>
+        <section className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
+          <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-slate-200/70">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              {redirecting ? "Redirecting" : "Loading"}
+            </p>
+
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-slate-900">
+              {redirecting
+                ? "Mengarahkan ke central dashboard..."
+                : "Menyiapkan church dashboard..."}
+            </h1>
+
+            <p className="mt-3 text-sm font-bold text-slate-500">
+              Mengambil akses, divisi, dan jadwal terbaru.
+            </p>
+          </div>
+        </section>
       </main>
     );
   }
@@ -272,12 +277,12 @@ export default function ChurchDashboardPage() {
             Silakan login terlebih dahulu untuk mengakses church dashboard.
           </p>
 
-          <a
+          <Link
             href="/login"
             className="mt-8 inline-flex rounded-full bg-blue-600 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-500"
           >
             Login →
-          </a>
+          </Link>
         </div>
       </main>
     );
@@ -300,12 +305,12 @@ export default function ChurchDashboardPage() {
         <div className="relative z-10 mx-auto max-w-[1400px]">
           <div className="grid gap-10 lg:grid-cols-[1fr_420px] lg:items-end">
             <div>
-              <a
+              <Link
                 href="/dashboard"
                 className="mb-8 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur-md transition hover:bg-white/20 hover:text-white"
               >
                 ← Central Dashboard
-              </a>
+              </Link>
 
               <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
                 Church Dashboard
@@ -335,12 +340,12 @@ export default function ChurchDashboardPage() {
                   Role Anda memiliki akses untuk membuat jadwal pelayanan.
                 </p>
 
-                <a
+                <Link
                   href={`/church/${tenantSlug}/schedules/new`}
                   className="mt-6 inline-flex w-full justify-center rounded-full bg-blue-600 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-blue-500"
                 >
                   Create Schedule →
-                </a>
+                </Link>
               </div>
             ) : (
               <div className="rounded-[2rem] border border-white/10 bg-white/10 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
@@ -367,11 +372,8 @@ export default function ChurchDashboardPage() {
               label="Divisi Saya"
               value={String(visibleDivisions.length)}
             />
-
-            <StatCard label="Jadwal Aktif" value={String(schedules.length)} />
-
+            <StatCard label="Jadwal Terbaru" value={String(schedules.length)} />
             <StatCard label="Role" value={roleLabel} />
-
             <StatCard
               label="Koordinator"
               value={String(coordinatorDivisions.length)}
@@ -392,17 +394,16 @@ export default function ChurchDashboardPage() {
 
                   <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
                     Klik salah satu divisi untuk melihat detail, koordinator,
-                    serving role, dan daftar pelayan Tuhan yang tergabung di
-                    divisi tersebut.
+                    serving role, dan daftar pelayan Tuhan.
                   </p>
                 </div>
 
-                <a
+                <Link
                   href={`/church/${tenantSlug}/divisions`}
                   className="w-fit rounded-full border border-slate-200 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600"
                 >
                   View All
-                </a>
+                </Link>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -413,7 +414,7 @@ export default function ChurchDashboardPage() {
                     );
 
                     return (
-                      <a
+                      <Link
                         key={division.id}
                         href={`/church/${tenantSlug}/divisions/${division.id}`}
                         className="block rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 transition hover:-translate-y-1 hover:border-blue-200 hover:bg-white hover:shadow-lg hover:shadow-blue-900/5"
@@ -432,7 +433,7 @@ export default function ChurchDashboardPage() {
                           {(isCoordinator ||
                             churchRole === "CHURCH_ADMIN" ||
                             isPlatformAdmin) && (
-                            <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-600">
+                            <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-600">
                               {isCoordinator ? "Coordinator" : "Access"}
                             </span>
                           )}
@@ -441,7 +442,7 @@ export default function ChurchDashboardPage() {
                         <p className="mt-6 text-xs font-black uppercase tracking-[0.14em] text-blue-600">
                           Lihat member →
                         </p>
-                      </a>
+                      </Link>
                     );
                   })
                 ) : (
@@ -451,12 +452,12 @@ export default function ChurchDashboardPage() {
                       untuk bergabung ke divisi.
                     </p>
 
-                    <a
+                    <Link
                       href={`/church/${tenantSlug}/join`}
                       className="mt-5 inline-flex rounded-full bg-blue-600 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-white"
                     >
                       Join with Code →
-                    </a>
+                    </Link>
                   </div>
                 )}
               </div>
@@ -474,46 +475,67 @@ export default function ChurchDashboardPage() {
                   </h2>
                 </div>
 
-                <a
+                <Link
                   href={`/church/${tenantSlug}/schedules`}
                   className="w-fit rounded-full border border-slate-200 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600"
                 >
                   View Schedules
-                </a>
+                </Link>
               </div>
 
               <div className="grid gap-4">
                 {schedules.length > 0 ? (
-                  schedules.map((schedule) => (
-                    <a
-                      key={schedule.id}
-                      href={`/church/${tenantSlug}/schedules/${schedule.id}`}
-                      className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 transition hover:border-blue-200 hover:bg-white hover:shadow-lg"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h3 className="text-lg font-black tracking-[-0.03em] text-slate-900">
-                            {schedule.title}
-                          </h3>
+                  schedules.map((schedule) => {
+                    const division = firstRelation(schedule.divisions);
+                    const category = firstRelation(
+                      schedule.schedule_categories
+                    );
 
-                          <p className="mt-2 text-sm text-slate-500">
-                            {schedule.divisions?.name ?? "-"} •{" "}
-                            {schedule.schedule_categories?.name ?? "-"}
-                          </p>
+                    return (
+                      <Link
+                        key={schedule.id}
+                        href={`/church/${tenantSlug}/schedules/${
+                          schedule.share_slug || schedule.id
+                        }`}
+                        className="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 transition hover:border-blue-200 hover:bg-white hover:shadow-lg"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="text-lg font-black tracking-[-0.03em] text-slate-900">
+                              {schedule.title}
+                            </h3>
+
+                            <p className="mt-2 text-sm text-slate-500">
+                              {division?.name ?? "-"} • {category?.name ?? "-"}
+                            </p>
+                          </div>
+
+                          <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black uppercase text-blue-600">
+                            {schedule.visibility}
+                          </span>
                         </div>
 
-                        <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black uppercase text-blue-600">
-                          {schedule.visibility}
-                        </span>
-                      </div>
-
-                      <p className="mt-4 text-xs font-black uppercase tracking-[0.14em] text-blue-600">
-                        Open schedule →
-                      </p>
-                    </a>
-                  ))
+                        <p className="mt-4 text-xs font-black uppercase tracking-[0.14em] text-blue-600">
+                          Open schedule →
+                        </p>
+                      </Link>
+                    );
+                  })
                 ) : (
-                  <p className="text-slate-500">Belum ada jadwal.</p>
+                  <div className="rounded-[1.5rem] bg-slate-50 p-6">
+                    <p className="text-sm font-bold text-slate-500">
+                      Belum ada jadwal.
+                    </p>
+
+                    {canCreateSchedule && (
+                      <Link
+                        href={`/church/${tenantSlug}/schedules/new`}
+                        className="mt-5 inline-flex rounded-full bg-blue-600 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-white"
+                      >
+                        Buat Jadwal →
+                      </Link>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -539,19 +561,19 @@ export default function ChurchDashboardPage() {
                 </p>
 
                 <div className="mt-8 flex flex-wrap gap-3">
-                  <a
+                  <Link
                     href={`/church/${tenantSlug}/invite-codes`}
                     className="rounded-full bg-slate-900 px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
                   >
                     Manage Codes →
-                  </a>
+                  </Link>
 
-                  <a
+                  <Link
                     href={`/church/${tenantSlug}/join`}
                     className="rounded-full border border-slate-200 px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-600 hover:text-blue-600"
                   >
                     Join Page
-                  </a>
+                  </Link>
                 </div>
               </div>
             )}
@@ -571,12 +593,12 @@ export default function ChurchDashboardPage() {
                   struktur platform.
                 </p>
 
-                <a
+                <Link
                   href="/admin"
                   className="mt-8 inline-flex rounded-full bg-white px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-900 transition hover:bg-blue-100"
                 >
                   Open Admin Dashboard →
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -593,7 +615,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
         {label}
       </p>
 
-      <p className="mt-5 text-4xl font-black tracking-[-0.06em] text-slate-900">
+      <p className="mt-5 break-words text-4xl font-black tracking-[-0.06em] text-slate-900">
         {value}
       </p>
     </article>

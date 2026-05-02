@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import AppNavbar from "@/components/AppNavbar";
@@ -257,10 +258,12 @@ function normalizeName(value: string) {
 
 function normalizeRole(value: string) {
   return value
+    .trim()
     .toLowerCase()
-    .replace(/\d+/g, "")
     .replace(/\([^)]*\)/g, "")
-    .replace(/[^a-z]/g, "");
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isEmptyCellName(value: string) {
@@ -333,6 +336,25 @@ function normalizeJoinedObject<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+function makeScheduleSlug(title: string, divisionSlugOrName?: string | null) {
+  const base = `${divisionSlugOrName ?? "schedule"} ${title}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+  const suffix = Math.random().toString(36).slice(2, 7);
+
+  return `${base || "schedule"}-${suffix}`;
+}
+
 export default function EditSchedulePage() {
   const params = useParams();
   const tenantSlug = String(params.tenantSlug);
@@ -345,6 +367,7 @@ export default function EditSchedulePage() {
   const [scheduleId, setScheduleId] = useState("");
   const [churchId, setChurchId] = useState("");
   const [profileId, setProfileId] = useState("");
+  const [shareSlug, setShareSlug] = useState<string | null>(null);
   const [churchRole, setChurchRole] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
@@ -435,25 +458,43 @@ export default function EditSchedulePage() {
       setChurchId(access.churchId);
       setProfileId(access.profileId);
 
-      const { data: scheduleData, error: scheduleError } = await supabase
+      const scheduleSelect = `
+        id,
+        church_id,
+        division_id,
+        category_id,
+        title,
+        description,
+        schedule_type,
+        visibility,
+        share_slug,
+        table_json
+      `;
+
+      let scheduleData: any = null;
+      let scheduleError: any = null;
+
+      const bySlug = await supabase
         .from("schedules")
-        .select(
-          `
-          id,
-          church_id,
-          division_id,
-          category_id,
-          title,
-          description,
-          schedule_type,
-          visibility,
-          share_slug,
-          table_json
-        `
-        )
+        .select(scheduleSelect)
         .eq("church_id", access.churchId)
-        .or(`id.eq.${scheduleParam},share_slug.eq.${scheduleParam}`)
+        .eq("share_slug", scheduleParam)
         .maybeSingle();
+
+      scheduleData = bySlug.data;
+      scheduleError = bySlug.error;
+
+      if (!scheduleData && isUuid(scheduleParam)) {
+        const byId = await supabase
+          .from("schedules")
+          .select(scheduleSelect)
+          .eq("church_id", access.churchId)
+          .eq("id", scheduleParam)
+          .maybeSingle();
+
+        scheduleData = byId.data;
+        scheduleError = byId.error;
+      }
 
       if (scheduleError) {
         setStatus(scheduleError.message);
@@ -461,7 +502,7 @@ export default function EditSchedulePage() {
         return;
       }
 
-      const schedule = (scheduleData as Schedule) ?? null;
+      const schedule = (scheduleData as unknown as Schedule) ?? null;
 
       if (!schedule) {
         setStatus("Jadwal tidak ditemukan.");
@@ -513,6 +554,7 @@ export default function EditSchedulePage() {
       setVisibility(schedule.visibility ?? "LINK_ONLY");
       setDivisionId(schedule.division_id ?? "");
       setCategoryId(schedule.category_id ?? "");
+      setShareSlug(schedule.share_slug ?? null);
 
       const tableMode =
         (schedule.table_json?.mode as ScheduleMode | undefined) ??
@@ -653,23 +695,18 @@ export default function EditSchedulePage() {
   const getSuggestedMembersForRow = (rowLabel: string): ProfileLite[] => {
     const rowRoleKey = normalizeRole(rowLabel);
 
+    if (!rowRoleKey) return [];
+
     const matchedServingRoles = servingRoles.filter((role) => {
       const roleKey = normalizeRole(role.name);
 
-      return (
-        roleKey === rowRoleKey ||
-        roleKey.includes(rowRoleKey) ||
-        rowRoleKey.includes(roleKey)
-      );
+      return roleKey === rowRoleKey;
     });
 
     const matchedRoleIds = matchedServingRoles.map((role) => role.id);
 
     if (matchedRoleIds.length === 0) {
-      return divisionMembers
-        .map((member) => member.profiles)
-        .filter((profile): profile is ProfileLite => Boolean(profile))
-        .slice(0, 8);
+      return [];
     }
 
     const allowedProfileIds = memberServingRoles
@@ -1158,6 +1195,18 @@ export default function EditSchedulePage() {
         groups,
       };
 
+      const selectedDivision = divisions.find(
+        (division) => division.id === divisionId
+      );
+
+      const nextShareSlug =
+        shareSlug && shareSlug.trim()
+          ? shareSlug
+          : makeScheduleSlug(
+              title,
+              selectedDivision?.slug ?? selectedDivision?.name
+            );
+
       const { error } = await supabase
         .from("schedules")
         .update({
@@ -1168,6 +1217,7 @@ export default function EditSchedulePage() {
           schedule_type: scheduleMode,
           visibility,
           table_json: tableJson,
+          share_slug: nextShareSlug,
         })
         .eq("id", scheduleId)
         .eq("church_id", churchId);
@@ -1178,6 +1228,7 @@ export default function EditSchedulePage() {
         return;
       }
 
+      setShareSlug(nextShareSlug);
       setStatus("Jadwal berhasil diperbarui.");
       window.location.href = `/church/${tenantSlug}/schedules/${scheduleId}`;
     } catch (error: any) {
@@ -1196,9 +1247,23 @@ export default function EditSchedulePage() {
           churchRole={churchRole}
         />
 
-        <div className="mx-auto flex h-[70vh] items-center justify-center px-8 text-sm font-black uppercase tracking-[0.18em] text-slate-400">
-          {redirecting ? "Redirecting..." : "Loading Edit Workspace..."}
-        </div>
+        <section className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
+          <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-slate-200/70">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              {redirecting ? "Redirecting" : "Loading"}
+            </p>
+
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-slate-900">
+              {redirecting
+                ? "Mengarahkan ke schedule..."
+                : "Menyiapkan edit workspace..."}
+            </h1>
+
+            <p className="mt-3 text-sm font-bold text-slate-500">
+              Mengambil data jadwal, divisi, kategori, dan daftar pelayan.
+            </p>
+          </div>
+        </section>
       </main>
     );
   }
@@ -1216,14 +1281,14 @@ export default function EditSchedulePage() {
 
       <section className="relative z-10 px-6 py-10 pb-32 md:px-10">
         <div className="mx-auto max-w-[1800px]">
-          <a
+          <Link
             href={`/church/${tenantSlug}/schedules/${
               scheduleId || scheduleParam
             }`}
             className="mb-8 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400 transition hover:text-blue-600"
           >
             <span className="text-lg leading-none">←</span> Back to Schedule
-          </a>
+          </Link>
 
           <div className="mb-10 grid gap-8 xl:grid-cols-[1fr_2fr]">
             <div>
@@ -1254,6 +1319,18 @@ export default function EditSchedulePage() {
                   </p>
                 </div>
               )}
+
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  Pretty Link
+                </p>
+
+                <p className="mt-2 break-all text-sm font-bold text-slate-600">
+                  {shareSlug
+                    ? `/church/${tenantSlug}/schedules/${shareSlug}`
+                    : "Belum ada. Akan dibuat otomatis saat Update Jadwal."}
+                </p>
+              </div>
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white/85 p-6 shadow-xl shadow-slate-200/70 backdrop-blur-xl md:p-8">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import AppNavbar from "@/components/AppNavbar";
@@ -61,6 +62,7 @@ type Schedule = {
   id: string;
   church_id: string;
   division_id: string | null;
+  category_id: string | null;
   title: string;
   description: string | null;
   schedule_type: string;
@@ -92,6 +94,12 @@ function isNewTable(table: TableJson): table is NewTableJson {
   return "groups" in table && Array.isArray(table.groups);
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
 function getCellDisplay(cell: string | BuilderCell | undefined) {
   if (!cell) return "-";
   if (typeof cell === "string") return cell || "-";
@@ -102,6 +110,14 @@ function formatDate(dateString?: string | null) {
   if (!dateString) return "";
 
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatCreatedAt(dateString: string) {
+  return new Date(dateString).toLocaleDateString("id-ID", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -151,10 +167,12 @@ function getPrimaryScheduleTime(schedule: Schedule) {
 export default function ScheduleDetailPage() {
   const params = useParams();
   const tenantSlug = String(params.tenantSlug);
-  const scheduleParam = String(params.id);
+  const scheduleParam = decodeURIComponent(String(params.id)).trim();
 
   const [loading, setLoading] = useState(true);
   const [redirecting, setRedirecting] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
+  const [duplicateLoading, setDuplicateLoading] = useState(false);
 
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [churchRole, setChurchRole] = useState<string | null>(null);
@@ -182,37 +200,56 @@ export default function ScheduleDetailPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("schedules")
-        .select(
-          `
-          id,
-          church_id,
-          division_id,
-          title,
-          description,
-          schedule_type,
-          visibility,
-          share_slug,
-          table_json,
-          image_url,
-          created_at,
-          divisions (
-            name,
-            slug
-          ),
-          schedule_categories (
-            name
-          ),
-          churches (
-            name,
-            slug
-          )
-        `
+      const scheduleSelect = `
+        id,
+        church_id,
+        division_id,
+        category_id,
+        title,
+        description,
+        schedule_type,
+        visibility,
+        share_slug,
+        table_json,
+        image_url,
+        created_at,
+        divisions (
+          name,
+          slug
+        ),
+        schedule_categories (
+          name
+        ),
+        churches (
+          name,
+          slug
         )
+      `;
+
+      let data: any = null;
+      let error: any = null;
+
+      const bySlug = await supabase
+        .from("schedules")
+        .select(scheduleSelect)
         .eq("church_id", access.churchId)
-        .or(`share_slug.eq.${scheduleParam},id.eq.${scheduleParam}`)
+        .eq("share_slug", scheduleParam)
         .maybeSingle();
+
+      data = bySlug.data;
+      error = bySlug.error;
+
+      if (!data && isUuid(scheduleParam)) {
+        const byId = await supabase
+          .from("schedules")
+          .select(scheduleSelect)
+          .eq("church_id", access.churchId)
+          .eq("id", scheduleParam)
+          .maybeSingle();
+
+        data = byId.data;
+        error = byId.error;
+      }
 
       if (error) {
         console.log("Schedule detail error:", error);
@@ -277,6 +314,55 @@ export default function ScheduleDetailPage() {
     );
   }, [schedule, currentUrl]);
 
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(currentUrl);
+      setCopyStatus("Link berhasil disalin.");
+      setTimeout(() => setCopyStatus(""), 2200);
+    } catch {
+      setCopyStatus("Gagal menyalin link.");
+      setTimeout(() => setCopyStatus(""), 2200);
+    }
+  };
+
+  const duplicateSchedule = async () => {
+    if (!schedule) return;
+
+    const confirmed = window.confirm(
+      `Duplicate jadwal "${schedule.title}"? Jadwal baru akan dibuat dan langsung dibuka di halaman edit.`
+    );
+
+    if (!confirmed) return;
+
+    setDuplicateLoading(true);
+
+    const { data, error } = await supabase
+      .from("schedules")
+      .insert({
+        church_id: schedule.church_id,
+        division_id: schedule.division_id,
+        category_id: schedule.category_id,
+        title: `Copy - ${schedule.title}`,
+        description: schedule.description,
+        schedule_type: schedule.schedule_type,
+        visibility: schedule.visibility,
+        share_slug: null,
+        table_json: schedule.table_json,
+        image_url: schedule.image_url,
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.log("Duplicate schedule error:", error);
+      alert(`Gagal duplicate jadwal: ${error.message}`);
+      setDuplicateLoading(false);
+      return;
+    }
+
+    window.location.href = `/church/${tenantSlug}/schedules/${data.id}/edit`;
+  };
+
   if (loading || redirecting) {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-800">
@@ -286,11 +372,24 @@ export default function ScheduleDetailPage() {
           isPlatformAdmin={isPlatformAdmin}
           churchRole={churchRole}
         />
-        <div className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
-          <p className="text-lg font-bold text-slate-500">
-            {redirecting ? "Redirecting..." : "Loading schedule..."}
-          </p>
-        </div>
+
+        <section className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
+          <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-slate-200/70">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              {redirecting ? "Redirecting" : "Loading"}
+            </p>
+
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-slate-900">
+              {redirecting
+                ? "Mengarahkan ke schedules..."
+                : "Menyiapkan detail jadwal..."}
+            </h1>
+
+            <p className="mt-3 text-sm font-bold text-slate-500">
+              Mengambil detail jadwal dan permission akses.
+            </p>
+          </div>
+        </section>
       </main>
     );
   }
@@ -315,12 +414,12 @@ export default function ScheduleDetailPage() {
             dihapus.
           </p>
 
-          <a
+          <Link
             href={`/church/${tenantSlug}/schedules`}
             className="mt-8 inline-flex rounded-full bg-blue-600 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white"
           >
             Kembali ke Schedules →
-          </a>
+          </Link>
         </div>
       </main>
     );
@@ -346,18 +445,24 @@ export default function ScheduleDetailPage() {
         <div className="absolute right-[-8%] top-[10%] h-[560px] w-[560px] rounded-full bg-cyan-400/10 blur-[140px]" />
 
         <div className="relative z-10 mx-auto max-w-[1400px]">
-          <a
+          <Link
             href={`/church/${tenantSlug}/schedules`}
             className="mb-10 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur-md transition hover:bg-white/20 hover:text-white"
           >
             ← Back to Schedules
-          </a>
+          </Link>
 
           <div className="grid gap-10 lg:grid-cols-[1fr_420px] lg:items-end">
             <div>
-              <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
-                {division?.name ?? "Schedule"}
-              </p>
+              <div className="mb-5 flex flex-wrap gap-2">
+                <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
+                  {division?.name ?? "Schedule"}
+                </span>
+
+                <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100/70 backdrop-blur-md">
+                  {schedule.visibility}
+                </span>
+              </div>
 
               <h1 className="max-w-4xl text-5xl font-black leading-[0.95] tracking-[-0.05em] text-white md:text-7xl">
                 {schedule.title}
@@ -369,12 +474,23 @@ export default function ScheduleDetailPage() {
 
               <div className="mt-8 flex flex-wrap gap-3">
                 {canManageSchedule && (
-                  <a
-                    href={`/church/${tenantSlug}/schedules/${schedule.id}/edit`}
-                    className="rounded-full bg-white px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-900 transition hover:bg-blue-100"
-                  >
-                    Edit Schedule →
-                  </a>
+                  <>
+                    <Link
+                      href={`/church/${tenantSlug}/schedules/${schedule.id}/edit`}
+                      className="rounded-full bg-white px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-900 transition hover:bg-blue-100"
+                    >
+                      Edit Schedule →
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={duplicateSchedule}
+                      disabled={duplicateLoading}
+                      className="rounded-full border border-white/15 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {duplicateLoading ? "Duplicating..." : "Duplicate Jadwal"}
+                    </button>
+                  </>
                 )}
 
                 <a
@@ -409,7 +525,7 @@ export default function ScheduleDetailPage() {
 
                 <button
                   type="button"
-                  onClick={() => navigator.clipboard.writeText(currentUrl)}
+                  onClick={copyLink}
                   className="rounded-full border border-white/15 px-6 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                 >
                   Copy Link
@@ -424,6 +540,12 @@ export default function ScheduleDetailPage() {
                   Share WhatsApp
                 </a>
               </div>
+
+              {copyStatus && (
+                <p className="mt-4 rounded-2xl bg-white/10 px-4 py-3 text-sm font-bold text-white">
+                  {copyStatus}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -431,11 +553,15 @@ export default function ScheduleDetailPage() {
 
       <section className="relative z-20 -mt-16 rounded-t-[3rem] bg-slate-50 px-8 py-16 md:px-14">
         <div className="mx-auto max-w-[1500px]">
-          <div className="mb-8 grid gap-4 md:grid-cols-4">
+          <div className="mb-8 grid gap-4 md:grid-cols-5">
             <InfoCard label="Church" value={church?.name ?? "-"} />
             <InfoCard label="Division" value={division?.name ?? "-"} />
             <InfoCard label="Category" value={category?.name ?? "-"} />
             <InfoCard label="Visibility" value={schedule.visibility} />
+            <InfoCard
+              label="Created"
+              value={formatCreatedAt(schedule.created_at)}
+            />
           </div>
 
           <div className="overflow-hidden rounded-[2.5rem] bg-white p-5 shadow-xl shadow-slate-200/60 md:p-7">
@@ -622,7 +748,7 @@ function InfoCard({ label, value }: { label: string; value: string }) {
         {label}
       </p>
 
-      <p className="mt-4 text-2xl font-black tracking-[-0.05em] text-slate-900">
+      <p className="mt-4 break-words text-2xl font-black tracking-[-0.05em] text-slate-900">
         {value}
       </p>
     </article>

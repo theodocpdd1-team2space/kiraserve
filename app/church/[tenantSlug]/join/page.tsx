@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
-import AppNavbar from "@/components/AppNavbar";
+import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import AppNavbar from "@/components/AppNavbar"; // Pastikan Anda menyesuaikan atau menyembunyikan navbar jika ingin tampilan full card
 import { supabase } from "@/lib/supabase/client";
 
 type InviteCode = {
@@ -27,12 +27,85 @@ type InviteCode = {
 
 export default function JoinPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+
   const tenantSlug = String(params.tenantSlug);
+  const codeFromUrl = searchParams.get("code") ?? "";
 
   const [code, setCode] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingLogin, setCheckingLogin] = useState(true);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<InviteCode | null>(null);
   const [joinedData, setJoinedData] = useState<InviteCode | null>(null);
+
+  useEffect(() => {
+    const loadInitialState = async () => {
+      const cleanCode = codeFromUrl.trim().toUpperCase();
+
+      if (cleanCode) {
+        setCode(cleanCode);
+        await loadInvitePreview(cleanCode);
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      setUserEmail(user?.email ?? null);
+      setCheckingLogin(false);
+    };
+
+    loadInitialState();
+  }, [codeFromUrl]);
+
+  const loadInvitePreview = async (targetCode: string) => {
+    const cleanCode = targetCode.trim().toUpperCase();
+
+    if (!cleanCode) {
+      setPreviewData(null);
+      return;
+    }
+
+    setPreviewLoading(true);
+
+    const { data, error } = await supabase
+      .from("invite_codes")
+      .select(
+        `
+        id,
+        church_id,
+        division_id,
+        code,
+        role_to_assign,
+        max_uses,
+        used_count,
+        expires_at,
+        is_active,
+        churches (
+          name,
+          slug
+        ),
+        divisions (
+          name,
+          slug
+        )
+      `
+      )
+      .eq("code", cleanCode)
+      .maybeSingle();
+
+    setPreviewLoading(false);
+
+    if (error || !data) {
+      setPreviewData(null);
+      return;
+    }
+
+    setPreviewData(mapInviteCode(data));
+  };
 
   const redeemCode = async () => {
     const cleanCode = code.trim().toUpperCase();
@@ -51,9 +124,12 @@ export default function JoinPage() {
 
     if (!user?.email) {
       setLoading(false);
+      setUserEmail(null);
       setStatus("Anda harus login terlebih dahulu sebelum menggunakan kode.");
       return;
     }
+
+    setUserEmail(user.email);
 
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
@@ -265,147 +341,199 @@ export default function JoinPage() {
     );
   };
 
-  const detectedChurchSlug = joinedData?.churches?.slug ?? tenantSlug;
+  const activeData = joinedData ?? previewData;
+  const detectedChurchSlug = activeData?.churches?.slug ?? tenantSlug;
+
+  const loginHref = `/login?redirect=${encodeURIComponent(
+    `/church/${tenantSlug}/join${code ? `?code=${code}` : ""}`
+  )}`;
+
+  const churchName = previewLoading
+    ? "Loading..."
+    : activeData?.churches?.name ?? "Church Name";
+
+  const divisionName = previewLoading
+    ? "Loading..."
+    : activeData?.divisions?.name ?? "Church Level";
+
+  const inviteStatus = getInviteStatus(activeData);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800">
-      <AppNavbar mode="central" />
+    <main className="min-h-screen bg-gradient-to-br from-[#F0F4FF] via-white to-[#F9F0FF] p-4 md:p-8 flex items-center justify-center font-sans text-slate-900 selection:bg-purple-200">
+      {/* Jika Anda butuh AppNavbar, biarkan. Jika tidak, bisa dikomen. */}
+      {/* <AppNavbar mode="central" /> */}
 
-      <section className="relative overflow-hidden px-8 pb-24 pt-16 md:px-14">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-950 via-indigo-950 to-blue-900" />
-        <div className="absolute -left-[10%] top-[-20%] h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[120px]" />
-        <div className="absolute right-[-8%] top-[8%] h-[560px] w-[560px] rounded-full bg-cyan-400/10 blur-[140px]" />
-
-        <div className="relative z-10 mx-auto max-w-[1100px]">
+      <div className="w-full max-w-[900px] bg-white rounded-[2rem] md:rounded-[3rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-6 md:p-12 relative overflow-hidden">
+        
+        {/* Top bar (Dashboard & Profile icon) */}
+        <div className="flex justify-between items-center mb-10 md:mb-16">
           <a
             href="/dashboard"
-            className="mb-10 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur-md transition hover:bg-white/20 hover:text-white"
+            className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
           >
-            ← Central Dashboard
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Dashboard
           </a>
-
-          <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
-            Join KiraServe
-          </p>
-
-          <h1 className="max-w-5xl text-5xl font-black leading-[0.95] tracking-[-0.05em] text-white md:text-7xl">
-            Masukkan kode undangan.
-          </h1>
-
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-100/70">
-            Sistem akan otomatis mendeteksi church dan divisi dari invite code
-            yang Anda masukkan.
-          </p>
+          
+          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200">
+             {/* Fallback avatar jika tidak ada foto profil */}
+             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+               <circle cx="12" cy="7" r="4"></circle>
+             </svg>
+          </div>
         </div>
-      </section>
 
-      <section className="relative z-20 -mt-14 rounded-t-[3rem] bg-slate-50 px-8 py-14 md:px-14">
-        <div className="mx-auto grid max-w-[1100px] gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
-          <div className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60">
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
-              How It Works
-            </p>
+        {/* Main Header Area */}
+        <div className="text-center max-w-3xl mx-auto mb-12 relative z-10">
+          {/* Decorative Doodles (Stars) */}
+          <svg className="absolute -top-6 -left-4 md:-left-12 w-12 h-12 text-slate-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+             <path d="M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9L12 2Z" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <svg className="absolute top-16 -right-2 md:-right-8 w-8 h-8 text-slate-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+             <path d="M12 2L15 9L22 12L15 15L12 22L9 15L2 12L9 9L12 2Z" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <svg className="absolute bottom-4 -left-6 md:-left-16 w-10 h-10 text-slate-800" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+             <path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
 
-            <h2 className="mt-3 text-4xl font-black leading-[0.95] tracking-[-0.05em] text-slate-900">
-              Join otomatis berdasarkan kode.
+          <h1 className="text-3xl md:text-5xl font-black tracking-[-0.03em] text-slate-900 leading-tight mb-3">
+            Congratulation you are invited to Join Team:
+          </h1>
+          
+          <div className="inline-block relative">
+            <h2 className="text-4xl md:text-6xl font-black text-slate-900 tracking-tight">
+              {churchName}
             </h2>
+            {/* Custom doodle underline */}
+            <svg className="absolute -bottom-3 left-0 w-full h-4 text-purple-400" preserveAspectRatio="none" viewBox="0 0 100 20" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M2 15 Q 25 5, 50 12 T 98 10" />
+            </svg>
+          </div>
+          
+          <h3 className="text-2xl md:text-4xl font-bold text-slate-800 mt-5">
+            {divisionName}
+          </h3>
+        </div>
 
-            <p className="mt-5 text-base leading-7 text-slate-500">
-              Anda tidak perlu memilih gereja secara manual. Setiap invite code
-              sudah terhubung ke church dan divisi tertentu.
-            </p>
+        {/* Action Form */}
+        <div className="max-w-xl mx-auto">
+          <label className="block text-sm font-semibold text-slate-600 mb-2">
+            Enter your invite code
+          </label>
+          <input
+            value={code}
+            onChange={async (event) => {
+              const value = event.target.value.toUpperCase();
+              setCode(value);
+              setStatus("");
+              setJoinedData(null);
+              await loadInvitePreview(value);
+            }}
+            placeholder="CODE-HERE"
+            className="w-full rounded-2xl border-2 border-slate-200 bg-white px-6 py-4 text-center text-lg font-bold tracking-[0.15em] uppercase text-slate-900 placeholder:text-slate-300 focus:border-purple-400 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
+          />
 
-            <div className="mt-8 grid gap-4">
-              <Step number="01" title="Login pakai email" />
-              <Step number="02" title="Masukkan kode undangan" />
-              <Step number="03" title="Sistem mendeteksi church/divisi" />
-              <Step number="04" title="Akses otomatis aktif" />
+          {/* Status Cards */}
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            {/* Status Kode Card */}
+            <div className="rounded-2xl bg-[#E2F7E4] p-4 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white/60 flex items-center justify-center text-green-700">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-green-800/70">Code Status</p>
+                <p className="text-sm font-bold text-green-900">{inviteStatus}</p>
+              </div>
+            </div>
+
+            {/* User Login Card */}
+            <div className="rounded-2xl bg-[#E2EEFF] p-4 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-white/60 flex items-center justify-center text-blue-700">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+              </div>
+              <div className="overflow-hidden">
+                <p className="text-xs font-semibold text-blue-800/70">User Login</p>
+                <p className="text-sm font-bold text-blue-900 truncate">
+                  {checkingLogin ? "Checking..." : userEmail ? userEmail : "Belum login"}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60 md:p-10">
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
-              Redeem Code
-            </p>
-
-            <h2 className="mt-3 text-4xl font-black tracking-[-0.05em] text-slate-900">
-              Masukkan Kode
-            </h2>
-
-            <p className="mt-4 text-sm leading-7 text-slate-500">
-              Contoh kode: <b>PRODUCTION-SERVANT-ABC123</b>
-            </p>
-
-            <div className="mt-8">
-              <label className="mb-3 block text-xs font-black uppercase tracking-[0.24em] text-slate-400">
-                Invite Code
-              </label>
-
-              <input
-                value={code}
-                onChange={(event) => {
-                  setCode(event.target.value.toUpperCase());
-                  setStatus("");
-                }}
-                placeholder="MASUKKAN-KODE"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5 text-lg font-black uppercase tracking-[0.08em] text-slate-900 outline-none transition placeholder:text-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
-              />
-
+          {/* Action Button */}
+          <div className="mt-6">
+            {!checkingLogin && !userEmail ? (
+              <a
+                href={loginHref}
+                className="flex w-full justify-center rounded-2xl bg-slate-900 px-6 py-5 text-base font-bold text-white shadow-lg shadow-slate-200 transition hover:-translate-y-0.5 hover:shadow-xl"
+              >
+                Login to Redeem Code
+              </a>
+            ) : (
               <button
                 type="button"
                 onClick={redeemCode}
-                disabled={loading}
-                className="mt-6 w-full rounded-full bg-blue-600 px-8 py-5 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-blue-500 disabled:opacity-60"
+                disabled={loading || checkingLogin}
+                className="w-full rounded-2xl bg-[#A88BFA] px-6 py-5 text-base font-bold text-white shadow-lg shadow-purple-200 transition hover:-translate-y-0.5 hover:bg-[#9372F9] disabled:opacity-60 disabled:hover:translate-y-0"
               >
-                {loading ? "Processing..." : "Join Now →"}
+                {loading ? "Processing..." : "Redeem Code"}
               </button>
+            )}
+          </div>
 
-              {status && (
-                <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5">
-                  <p className="text-sm font-bold leading-7 text-blue-700">
-                    {status}
-                  </p>
-                </div>
-              )}
-
+          {/* Status & Success Messages */}
+          {status && (
+            <div className={`mt-4 rounded-xl p-4 text-center text-sm font-semibold ${joinedData ? 'bg-[#E2F7E4] text-green-800' : 'bg-slate-100 text-slate-700'}`}>
+              {status}
+              
               {joinedData && (
-                <div className="mt-6 rounded-[2rem] border border-emerald-100 bg-emerald-50 p-6">
-                  <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-600">
-                    Access Granted
-                  </p>
-
-                  <h3 className="mt-3 text-3xl font-black tracking-[-0.05em] text-slate-900">
-                    {joinedData.churches?.name}
-                  </h3>
-
-                  <p className="mt-3 text-sm leading-7 text-emerald-700">
-                    Role: <b>{joinedData.role_to_assign}</b>
-                    <br />
-                    Divisi:{" "}
-                    <b>{joinedData.divisions?.name ?? "Church Level"}</b>
-                  </p>
-
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <a
-                      href={`/church/${detectedChurchSlug}/dashboard`}
-                      className="inline-flex rounded-full bg-slate-900 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
-                    >
-                      Open Church →
-                    </a>
-
-                    <a
-                      href="/dashboard"
-                      className="inline-flex rounded-full border border-emerald-200 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-emerald-700 transition hover:bg-emerald-600 hover:text-white"
-                    >
-                      Central Dashboard
-                    </a>
-                  </div>
+                <div className="mt-4 flex flex-wrap justify-center gap-3">
+                  <a
+                    href={`/church/${detectedChurchSlug}/dashboard`}
+                    className="rounded-full bg-slate-900 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800"
+                  >
+                    Open Church Workspace
+                  </a>
                 </div>
               )}
             </div>
+          )}
+
+          {/* How It Works Mini Guide */}
+          <div className="mt-10">
+            <p className="text-sm font-bold text-slate-800 mb-4">How It Works</p>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+                 <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-500">
+                    <span className="text-xs font-black">1</span>
+                 </div>
+                 <p className="text-xs font-medium text-slate-600 leading-tight">Enter your invite code</p>
+              </div>
+              <div className="flex-1 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+                 <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-500">
+                    <span className="text-xs font-black">2</span>
+                 </div>
+                 <p className="text-xs font-medium text-slate-600 leading-tight">System detects church/div</p>
+              </div>
+              <div className="flex-1 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+                 <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center text-slate-500">
+                    <span className="text-xs font-black">3</span>
+                 </div>
+                 <p className="text-xs font-medium text-slate-600 leading-tight">Click redeem to join team</p>
+              </div>
+            </div>
           </div>
+
         </div>
-      </section>
+      </div>
     </main>
   );
 }
@@ -430,14 +558,18 @@ function mapInviteCode(raw: any): InviteCode {
   };
 }
 
-function Step({ number, title }: { number: string; title: string }) {
-  return (
-    <div className="flex items-center gap-4 rounded-2xl bg-slate-50 p-4">
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-blue-600">
-        {number}
-      </span>
+function getInviteStatus(invite: InviteCode | null) {
+  if (!invite) return "Waiting...";
 
-      <p className="text-sm font-black text-slate-700">{title}</p>
-    </div>
-  );
+  const expired = invite.expires_at
+    ? new Date(invite.expires_at).getTime() < Date.now()
+    : false;
+
+  const usedUp = invite.used_count >= invite.max_uses;
+
+  if (!invite.is_active) return "Inactive";
+  if (expired) return "Expired";
+  if (usedUp) return "Full Quota";
+
+  return "Active";
 }

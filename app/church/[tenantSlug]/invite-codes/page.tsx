@@ -41,6 +41,16 @@ type InviteCode = {
   } | null;
 };
 
+function getJoinLink(tenantSlug: string, code: string) {
+  if (typeof window === "undefined") {
+    return `/church/${tenantSlug}/join?code=${encodeURIComponent(code)}`;
+  }
+
+  return `${window.location.origin}/church/${tenantSlug}/join?code=${encodeURIComponent(
+    code
+  )}`;
+}
+
 export default function InviteCodesPage() {
   const params = useParams();
   const tenantSlug = String(params.tenantSlug);
@@ -308,10 +318,12 @@ export default function InviteCodesPage() {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + Number(validDays || 7));
 
+    const code = generateCode();
+
     const { error } = await supabase.from("invite_codes").insert({
       church_id: church.id,
       division_id: divisionId || null,
-      code: generateCode(),
+      code,
       role_to_assign: roleToAssign,
       max_uses: Number(maxUses || 1),
       used_count: 0,
@@ -327,7 +339,7 @@ export default function InviteCodesPage() {
       return;
     }
 
-    setStatus("Invite code berhasil dibuat.");
+    setStatus(`Invite code berhasil dibuat: ${code}`);
     setDivisionId("");
     setRoleToAssign("SERVANT");
     setMaxUses("20");
@@ -357,8 +369,43 @@ export default function InviteCodesPage() {
   };
 
   const copyCode = async (code: string) => {
-    await navigator.clipboard.writeText(code);
-    setStatus(`Kode ${code} berhasil dicopy.`);
+    try {
+      await navigator.clipboard.writeText(code);
+      setStatus(`Kode ${code} berhasil dicopy.`);
+    } catch {
+      setStatus("Gagal copy kode.");
+    }
+  };
+
+  const copyJoinLink = async (code: string) => {
+    const link = getJoinLink(tenantSlug, code);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setStatus(`Join link untuk ${code} berhasil dicopy.`);
+    } catch {
+      setStatus("Gagal copy join link.");
+    }
+  };
+
+  const copyWhatsappText = async (item: InviteCode) => {
+    const link = getJoinLink(tenantSlug, item.code);
+    const divisionName = item.divisions?.name ?? "Church Level";
+
+    const text = `Shalom, silakan join KiraServe untuk ${church?.name ?? "church"}.
+
+Divisi: ${divisionName}
+Kode: ${item.code}
+
+Klik link ini untuk join:
+${link}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`Text WhatsApp untuk ${item.code} berhasil dicopy.`);
+    } catch {
+      setStatus("Gagal copy text WhatsApp.");
+    }
   };
 
   if (loading || redirecting) {
@@ -370,6 +417,7 @@ export default function InviteCodesPage() {
           isPlatformAdmin={isPlatformAdmin}
           churchRole={churchRole}
         />
+
         <div className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
           <p className="text-lg font-bold text-slate-500">
             {redirecting ? "Redirecting..." : "Loading invite codes..."}
@@ -383,13 +431,16 @@ export default function InviteCodesPage() {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-800">
         <AppNavbar mode="central" />
+
         <div className="mx-auto max-w-[900px] px-8 py-24 text-center md:px-14">
           <h1 className="text-5xl font-black tracking-[-0.05em] text-slate-900">
             Anda belum login.
           </h1>
+
           <p className="mt-5 text-lg text-slate-500">
             Login terlebih dahulu untuk membuat atau melihat invite code.
           </p>
+
           <a
             href="/login"
             className="mt-8 inline-flex rounded-full bg-blue-600 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white"
@@ -434,8 +485,8 @@ export default function InviteCodesPage() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-100/70">
-                Generate kode untuk mengundang servant atau koordinator tanpa
-                harus assign email satu per satu.
+                Generate kode atau link join supaya member bisa masuk ke church
+                dan divisi tanpa assign email satu per satu.
               </p>
             </div>
 
@@ -443,9 +494,11 @@ export default function InviteCodesPage() {
               <p className="text-sm font-bold text-blue-100/70">
                 Current Church
               </p>
+
               <h2 className="mt-2 text-3xl font-black tracking-[-0.05em] text-white">
                 {church?.name ?? "No Church"}
               </h2>
+
               <p className="mt-2 text-sm text-blue-100/60">
                 Login sebagai {profile.email}
               </p>
@@ -466,8 +519,8 @@ export default function InviteCodesPage() {
             </h2>
 
             <p className="mt-4 text-sm leading-7 text-slate-500">
-              Share kode ini ke WhatsApp group. User login lalu memasukkan kode
-              di halaman Join.
+              Pilih divisi bila kode ini hanya untuk divisi tertentu. Serving
+              role tetap diatur dari halaman division/member list.
             </p>
 
             {!canCreateServantCode ? (
@@ -576,7 +629,10 @@ export default function InviteCodesPage() {
                   <InviteCodeCard
                     key={item.id}
                     item={item}
+                    tenantSlug={tenantSlug}
                     onCopy={copyCode}
+                    onCopyJoinLink={copyJoinLink}
+                    onCopyWhatsappText={copyWhatsappText}
                     onDeactivate={handleDeactivateCode}
                   />
                 ))
@@ -585,6 +641,7 @@ export default function InviteCodesPage() {
                   <h3 className="text-3xl font-black tracking-[-0.05em] text-slate-900">
                     Belum ada kode.
                   </h3>
+
                   <p className="mt-3 text-slate-500">
                     Generate kode pertama untuk mulai onboarding.
                   </p>
@@ -620,11 +677,17 @@ export default function InviteCodesPage() {
 
 function InviteCodeCard({
   item,
+  tenantSlug,
   onCopy,
+  onCopyJoinLink,
+  onCopyWhatsappText,
   onDeactivate,
 }: {
   item: InviteCode;
+  tenantSlug: string;
   onCopy: (code: string) => void;
+  onCopyJoinLink: (code: string) => void;
+  onCopyWhatsappText: (item: InviteCode) => void;
   onDeactivate: (id: string) => void;
 }) {
   const expired = item.expires_at
@@ -633,6 +696,7 @@ function InviteCodeCard({
 
   const usedUp = item.used_count >= item.max_uses;
   const active = item.is_active && !expired && !usedUp;
+  const joinLink = getJoinLink(tenantSlug, item.code);
 
   return (
     <article className="rounded-[2rem] border border-slate-100 bg-slate-50 p-6">
@@ -657,6 +721,16 @@ function InviteCodeCard({
               ? new Date(item.expires_at).toLocaleDateString("id-ID")
               : "-"}
           </p>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              Join Link
+            </p>
+
+            <p className="mt-2 break-all text-xs font-bold leading-5 text-slate-500">
+              {joinLink}
+            </p>
+          </div>
         </div>
 
         <span
@@ -677,6 +751,22 @@ function InviteCodeCard({
           className="rounded-full bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
         >
           Copy Code
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onCopyJoinLink(item.code)}
+          className="rounded-full border border-blue-200 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-blue-600 transition hover:bg-blue-600 hover:text-white"
+        >
+          Copy Join Link
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onCopyWhatsappText(item)}
+          className="rounded-full border border-emerald-200 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-emerald-600 transition hover:bg-emerald-600 hover:text-white"
+        >
+          Copy WA Text
         </button>
 
         {item.is_active && (

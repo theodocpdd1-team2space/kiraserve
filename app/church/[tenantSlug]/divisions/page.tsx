@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AppNavbar from "@/components/AppNavbar";
@@ -181,13 +182,20 @@ export default function DivisionsPage() {
           churchRole={churchRole}
         />
 
-        <div className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
-          <p className="text-lg font-bold text-slate-500">
-            {redirecting
-              ? "Redirecting to central dashboard..."
-              : "Loading divisions..."}
-          </p>
-        </div>
+        <section className="relative overflow-hidden px-8 py-24 md:px-14">
+          <div className="mx-auto max-w-[1400px]">
+            <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-slate-200/70">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                {redirecting ? "Redirecting" : "Loading"}
+              </p>
+              <p className="mt-3 text-2xl font-black tracking-[-0.04em] text-slate-900">
+                {redirecting
+                  ? "Mengarahkan ke dashboard..."
+                  : "Menyiapkan daftar divisi..."}
+              </p>
+            </div>
+          </div>
+        </section>
       </main>
     );
   }
@@ -206,12 +214,12 @@ export default function DivisionsPage() {
             Silakan login untuk melihat divisi.
           </p>
 
-          <a
+          <Link
             href="/login"
             className="mt-8 inline-flex rounded-full bg-blue-600 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white"
           >
             Login →
-          </a>
+          </Link>
         </div>
       </main>
     );
@@ -234,12 +242,12 @@ export default function DivisionsPage() {
         <div className="relative z-10 mx-auto max-w-[1400px]">
           <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
             <div>
-              <a
+              <Link
                 href={`/church/${tenantSlug}/dashboard`}
                 className="mb-8 inline-flex rounded-full border border-white/15 bg-white/10 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white/70 backdrop-blur-md transition hover:bg-white/20 hover:text-white"
               >
                 ← Church Dashboard
-              </a>
+              </Link>
 
               <p className="mb-5 inline-flex rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-blue-100 backdrop-blur-md">
                 Divisions
@@ -251,17 +259,17 @@ export default function DivisionsPage() {
 
               <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-100/70">
                 Kelola divisi di {church?.name}. Setiap divisi bisa memiliki
-                beberapa koordinator.
+                beberapa koordinator dan jadwal pelayanan sendiri.
               </p>
             </div>
 
             {canManageDivisions && (
-              <a
+              <Link
                 href={`/church/${tenantSlug}/divisions/new`}
                 className="w-fit rounded-full bg-white px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-slate-900 transition hover:-translate-y-0.5 hover:bg-blue-100"
               >
                 Tambah Divisi →
-              </a>
+              </Link>
             )}
           </div>
         </div>
@@ -269,75 +277,104 @@ export default function DivisionsPage() {
 
       <section className="relative z-20 -mt-16 rounded-t-[3rem] bg-slate-50 px-8 py-16 md:px-14">
         <div className="mx-auto max-w-[1400px]">
+          <div className="mb-8 grid gap-4 md:grid-cols-3">
+            <InfoCard label="Church" value={church?.name ?? "-"} />
+            <InfoCard label="Total Divisi" value={String(divisions.length)} />
+            <InfoCard
+              label="Role Anda"
+              value={
+                isPlatformAdmin
+                  ? "Super Admin"
+                  : churchRole === "CHURCH_ADMIN"
+                  ? "Church Admin"
+                  : "Member"
+              }
+            />
+          </div>
+
           {!canManageDivisions && (
             <div className="mb-8 rounded-[2rem] border border-blue-100 bg-blue-50 p-6">
               <p className="text-sm font-bold leading-7 text-blue-700">
-                Anda bisa melihat divisi, tapi hanya Church Admin atau KiraServe
-                Super Admin yang bisa menambah divisi dan assign koordinator.
+                Anda bisa melihat divisi, tetapi hanya Church Admin atau
+                KiraServe Super Admin yang bisa menambah divisi dan assign
+                koordinator.
               </p>
             </div>
           )}
 
           {divisions.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-5">
               {divisions.map((division) => {
                 const coordinators = getCoordinators(division.id);
 
                 return (
                   <article
                     key={division.id}
-                    className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-900/10"
+                    className="overflow-hidden rounded-[2rem] bg-white shadow-xl shadow-slate-200/70 transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-blue-900/10"
                   >
-                    <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-600">
-                      /{division.slug}
-                    </p>
-
-                    <h2 className="mt-6 text-4xl font-black tracking-[-0.05em] text-slate-900">
-                      {division.name}
-                    </h2>
-
-                    <p className="mt-5 min-h-[84px] text-base leading-7 text-slate-500">
-                      {division.description ?? "Belum ada deskripsi."}
-                    </p>
-
-                    <div className="mt-8 border-t border-slate-100 pt-6">
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
-                        Koordinator
-                      </p>
-
-                      {coordinators.length > 0 ? (
-                        <div className="mt-4 grid gap-3">
-                          {coordinators.map((coordinator) => (
-                            <div
-                              key={`${division.id}-${coordinator.profiles?.email}`}
-                              className="rounded-2xl bg-slate-50 px-4 py-3"
-                            >
-                              <p className="text-sm font-black text-slate-900">
-                                {coordinator.profiles?.name ??
-                                  coordinator.profiles?.email}
-                              </p>
-
-                              <p className="mt-1 text-xs text-slate-500">
-                                {coordinator.profiles?.email}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-4 text-sm text-slate-400">
-                          Belum ada koordinator.
+                    <div className="grid gap-0 lg:grid-cols-[1fr_360px]">
+                      <div className="p-7 md:p-8">
+                        <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-600">
+                          /{division.slug}
                         </p>
-                      )}
-                    </div>
 
-                    {canManageDivisions && (
-                      <a
-                        href={`/church/${tenantSlug}/divisions/${division.id}`}
-                        className="mt-8 inline-flex w-full justify-center rounded-full bg-slate-900 px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
-                      >
-                        Manage Division →
-                      </a>
-                    )}
+                        <h2 className="mt-4 text-4xl font-black tracking-[-0.05em] text-slate-900 md:text-5xl">
+                          {division.name}
+                        </h2>
+
+                        <p className="mt-5 max-w-3xl text-base leading-7 text-slate-500">
+                          {division.description ?? "Belum ada deskripsi."}
+                        </p>
+
+                        <div className="mt-8 flex flex-wrap gap-3">
+                          <Link
+                            href={`/church/${tenantSlug}/schedules`}
+                            className="rounded-full bg-blue-600 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-700"
+                          >
+                            Lihat Schedules →
+                          </Link>
+
+                          {canManageDivisions && (
+                            <Link
+                              href={`/church/${tenantSlug}/divisions/${division.id}`}
+                              className="rounded-full bg-slate-900 px-6 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+                            >
+                              Manage Division →
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-100 bg-slate-50 p-7 md:p-8 lg:border-l lg:border-t-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                          Koordinator
+                        </p>
+
+                        {coordinators.length > 0 ? (
+                          <div className="mt-4 grid gap-3">
+                            {coordinators.map((coordinator) => (
+                              <div
+                                key={`${division.id}-${coordinator.profiles?.email}`}
+                                className="rounded-2xl bg-white px-4 py-3 shadow-sm shadow-slate-200/70"
+                              >
+                                <p className="text-sm font-black text-slate-900">
+                                  {coordinator.profiles?.name ??
+                                    coordinator.profiles?.email}
+                                </p>
+
+                                <p className="mt-1 break-all text-xs text-slate-500">
+                                  {coordinator.profiles?.email}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-4 text-sm font-bold text-slate-400">
+                            Belum ada koordinator.
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </article>
                 );
               })}
@@ -358,17 +395,31 @@ export default function DivisionsPage() {
               </p>
 
               {canManageDivisions && (
-                <a
+                <Link
                   href={`/church/${tenantSlug}/divisions/new`}
                   className="mt-8 inline-flex rounded-full bg-blue-600 px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-500"
                 >
                   Tambah Divisi →
-                </a>
+                </Link>
               )}
             </div>
           )}
         </div>
       </section>
     </main>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/60">
+      <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-4 text-2xl font-black tracking-[-0.05em] text-slate-900">
+        {value}
+      </p>
+    </article>
   );
 }

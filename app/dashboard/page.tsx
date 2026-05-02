@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import AppNavbar from "@/components/AppNavbar";
 import { supabase } from "@/lib/supabase/client";
@@ -18,14 +19,22 @@ type WorkspaceCard = {
   label: string;
 };
 
+type RelationArray<T> = T[] | T | null;
+
 type ChurchMembership = {
   role: string;
-  churches: {
+  churches: RelationArray<{
     id: string;
     name: string;
     slug: string;
-  } | null;
+  }>;
 };
+
+function firstRelation<T>(value: RelationArray<T> | undefined): T | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 export default function CentralDashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -92,8 +101,7 @@ export default function CentralDashboardPage() {
         .eq("profile_id", currentProfile.id)
         .maybeSingle();
 
-      const superAdmin =
-        platformAdminData?.role === "KIRASERVE_SUPER_ADMIN";
+      const superAdmin = platformAdminData?.role === "KIRASERVE_SUPER_ADMIN";
 
       setIsPlatformAdmin(superAdmin);
 
@@ -117,20 +125,26 @@ export default function CentralDashboardPage() {
       }
 
       const churchCards =
-        ((churchMemberships as ChurchMembership[] | null) ?? [])
-          .filter((item) => item.churches)
-          .map((item) => ({
-            title: item.churches?.name ?? "Church Workspace",
-            service: "Church Management",
-            role:
-              item.role === "CHURCH_ADMIN"
-                ? "Church Admin"
-                : item.role === "SERVANT"
-                ? "Church Member"
-                : item.role,
-            href: `/church/${item.churches?.slug}/dashboard`,
-            label: "Open Church",
-          }));
+        ((churchMemberships as unknown as ChurchMembership[] | null) ?? [])
+          .map((item) => {
+            const church = firstRelation(item.churches);
+
+            if (!church) return null;
+
+            return {
+              title: church.name,
+              service: "Church Management",
+              role:
+                item.role === "CHURCH_ADMIN"
+                  ? "Church Admin"
+                  : item.role === "SERVANT"
+                  ? "Church Member"
+                  : item.role,
+              href: `/church/${church.slug}/dashboard`,
+              label: "Open Church",
+            };
+          })
+          .filter(Boolean) as WorkspaceCard[];
 
       const platformCards: WorkspaceCard[] = superAdmin
         ? [
@@ -165,16 +179,21 @@ export default function CentralDashboardPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-50 text-slate-800">
-        <AppNavbar
-          isPlatformAdmin={isPlatformAdmin}
-          churchRole={null}
-        />
+        <AppNavbar isPlatformAdmin={isPlatformAdmin} churchRole={null} />
 
-        <div className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
-          <p className="text-lg font-bold text-slate-500">
-            Loading dashboard...
-          </p>
-        </div>
+        <section className="mx-auto max-w-[1400px] px-8 py-24 md:px-14">
+          <div className="rounded-[2rem] bg-white p-8 shadow-xl shadow-slate-200/70">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              Loading
+            </p>
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.05em] text-slate-900">
+              Menyiapkan dashboard...
+            </h1>
+            <p className="mt-3 text-sm font-bold text-slate-500">
+              Mengambil workspace dan akses akun Anda.
+            </p>
+          </div>
+        </section>
       </main>
     );
   }
@@ -197,12 +216,12 @@ export default function CentralDashboardPage() {
             Login terlebih dahulu untuk melihat workspace dan layanan KiraServe.
           </p>
 
-          <a
+          <Link
             href="/login"
             className="mt-8 inline-flex rounded-full bg-slate-900 px-8 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
           >
             Login →
-          </a>
+          </Link>
         </section>
       </main>
     );
@@ -235,6 +254,18 @@ export default function CentralDashboardPage() {
 
       <section className="relative z-20 -mt-16 rounded-t-[3rem] bg-slate-50 px-8 py-16 md:px-14">
         <div className="mx-auto max-w-[1400px]">
+          <div className="mb-8 grid gap-4 md:grid-cols-3">
+            <InfoCard
+              label="Account"
+              value={profile?.name || profile?.email || "-"}
+            />
+            <InfoCard label="Workspaces" value={String(workspaceCards.length)} />
+            <InfoCard
+              label="Access"
+              value={isPlatformAdmin ? "Super Admin" : "User"}
+            />
+          </div>
+
           <div className="mb-10">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
               Your Workspaces
@@ -246,37 +277,51 @@ export default function CentralDashboardPage() {
           </div>
 
           {workspaceCards.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-5">
               {workspaceCards.map((workspace) => (
-                <a
+                <Link
                   key={`${workspace.service}-${workspace.title}`}
                   href={workspace.href}
-                  className="group rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-900/10"
+                  className="group overflow-hidden rounded-[2rem] bg-white shadow-xl shadow-slate-200/70 transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-blue-900/10"
                 >
-                  <div className="mb-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-xl font-black text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
-                    →
+                  <div className="grid gap-0 lg:grid-cols-[1fr_280px]">
+                    <div className="p-7 md:p-8">
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-600">
+                        {workspace.service}
+                      </p>
+
+                      <h3 className="mt-4 text-4xl font-black tracking-[-0.05em] text-slate-900 md:text-5xl">
+                        {workspace.title}
+                      </h3>
+
+                      <p className="mt-5 max-w-3xl text-base leading-7 text-slate-500">
+                        Role Anda di workspace ini:{" "}
+                        <span className="font-black text-slate-900">
+                          {workspace.role}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 p-7 md:p-8 lg:border-l lg:border-t-0">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                          Action
+                        </p>
+                        <p className="mt-2 text-base font-black text-slate-950">
+                          {workspace.label}
+                        </p>
+                      </div>
+
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-xl font-black text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
+                        →
+                      </div>
+                    </div>
                   </div>
-
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-600">
-                    {workspace.service}
-                  </p>
-
-                  <h3 className="mt-4 text-3xl font-black tracking-[-0.05em] text-slate-900">
-                    {workspace.title}
-                  </h3>
-
-                  <p className="mt-4 text-sm leading-6 text-slate-500">
-                    Role: {workspace.role}
-                  </p>
-
-                  <p className="mt-8 text-xs font-black uppercase tracking-[0.14em] text-blue-600">
-                    {workspace.label} →
-                  </p>
-                </a>
+                </Link>
               ))}
             </div>
           ) : (
-            <div className="max-w-[720px] rounded-[2.5rem] border border-dashed border-slate-300 bg-white p-8 shadow-xl shadow-slate-200/60">
+            <div className="max-w-[760px] rounded-[2.5rem] border border-dashed border-slate-300 bg-white p-8 shadow-xl shadow-slate-200/60">
               <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
                 No Workspace Yet
               </p>
@@ -292,7 +337,7 @@ export default function CentralDashboardPage() {
             </div>
           )}
 
-          <div className="mt-14 mb-10">
+          <div className="mb-10 mt-14">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">
               Start Something New
             </p>
@@ -302,7 +347,7 @@ export default function CentralDashboardPage() {
             </h2>
           </div>
 
-          <div className="grid max-w-[560px] gap-6">
+          <div className="grid max-w-[720px] gap-6">
             {serviceActions.map((service) => (
               <div
                 key={service.title}
@@ -316,15 +361,15 @@ export default function CentralDashboardPage() {
                   {service.desc}
                 </p>
 
-                <div className="mt-8 grid gap-3">
+                <div className="mt-8 flex flex-wrap gap-3">
                   {service.actions.map((action) => (
-                    <a
+                    <Link
                       key={action.href}
                       href={action.href}
                       className="rounded-full bg-slate-900 px-6 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
                     >
                       {action.label} →
-                    </a>
+                    </Link>
                   ))}
                 </div>
               </div>
@@ -333,5 +378,19 @@ export default function CentralDashboardPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="rounded-[2rem] bg-white p-6 shadow-xl shadow-slate-200/60">
+      <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-4 break-words text-2xl font-black tracking-[-0.05em] text-slate-900">
+        {value}
+      </p>
+    </article>
   );
 }

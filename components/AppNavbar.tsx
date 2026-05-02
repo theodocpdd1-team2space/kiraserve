@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -93,12 +94,16 @@ export default function AppNavbar({
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-[1400px] items-center justify-between px-6 md:px-10">
-        <a
+        <Link
           href="/dashboard"
           className="text-2xl font-black tracking-[-0.06em] text-slate-900"
+          onClick={() => {
+            setMoreOpen(false);
+            setMobileOpen(false);
+          }}
         >
           KiraServe
-        </a>
+        </Link>
 
         <nav className="hidden items-center gap-1 lg:flex">
           {mainLinks.map((item) => (
@@ -145,12 +150,12 @@ export default function AppNavbar({
               Logout
             </button>
           ) : (
-            <a
+            <Link
               href="/login"
               className="rounded-full bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
             >
               Login
-            </a>
+            </Link>
           )}
         </div>
 
@@ -190,6 +195,7 @@ export default function AppNavbar({
                 key={item.href}
                 href={item.href}
                 label={item.label}
+                onClick={() => setMobileOpen(false)}
               />
             ))}
 
@@ -203,12 +209,13 @@ export default function AppNavbar({
                   Logout
                 </button>
               ) : (
-                <a
+                <Link
                   href="/login"
+                  onClick={() => setMobileOpen(false)}
                   className="flex w-full justify-center rounded-full bg-slate-900 px-5 py-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
                 >
                   Login
-                </a>
+                </Link>
               )}
             </div>
           </div>
@@ -220,12 +227,13 @@ export default function AppNavbar({
 
 function NavLink({ href, label }: { href: string; label: string }) {
   return (
-    <a
+    <Link
       href={href}
+      prefetch
       className="rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.16em] text-slate-500 transition hover:bg-slate-100 hover:text-blue-600"
     >
       {label}
-    </a>
+    </Link>
   );
 }
 
@@ -239,24 +247,35 @@ function DropdownLink({
   onClick: () => void;
 }) {
   return (
-    <a
+    <Link
       href={href}
+      prefetch
       onClick={onClick}
       className="block rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 hover:text-blue-600"
     >
       {label}
-    </a>
+    </Link>
   );
 }
 
-function MobileLink({ href, label }: { href: string; label: string }) {
+function MobileLink({
+  href,
+  label,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <a
+    <Link
       href={href}
+      prefetch
+      onClick={onClick}
       className="flex items-center justify-between rounded-2xl bg-slate-50 px-5 py-4 text-sm font-black text-slate-700 transition hover:bg-blue-50 hover:text-blue-600"
     >
       {label}
       <span>→</span>
-    </a>
+    </Link>
   );
 }
