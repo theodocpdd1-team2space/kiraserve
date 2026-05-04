@@ -247,14 +247,30 @@ export default function CentralDashboardPage() {
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-blue-100/70">
             Login sebagai <b>{profile?.email}</b>. Pilih workspace yang Anda
-            miliki atau mulai layanan baru.
+            miliki, aktifkan layanan baru, atau kelola paket KiraServe Anda.
           </p>
+
+          <div className="mt-10 flex flex-wrap gap-4">
+            <Link
+              href="/dashboard/billing"
+              className="rounded-full bg-white px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-slate-950 transition hover:-translate-y-1 hover:bg-cyan-100"
+            >
+              Billing & Plan →
+            </Link>
+
+            <Link
+              href="/church/request"
+              className="rounded-full border border-white/20 bg-white/10 px-7 py-4 text-xs font-black uppercase tracking-[0.14em] text-white backdrop-blur-md transition hover:-translate-y-1 hover:bg-white/15"
+            >
+              Request Workspace →
+            </Link>
+          </div>
         </div>
       </section>
 
       <section className="relative z-20 -mt-16 rounded-t-[3rem] bg-slate-50 px-8 py-16 md:px-14">
         <div className="mx-auto max-w-[1400px]">
-          <div className="mb-8 grid gap-4 md:grid-cols-3">
+          <div className="mb-8 grid gap-4 md:grid-cols-4">
             <InfoCard
               label="Account"
               value={profile?.name || profile?.email || "-"}
@@ -264,6 +280,26 @@ export default function CentralDashboardPage() {
               label="Access"
               value={isPlatformAdmin ? "Super Admin" : "User"}
             />
+            <Link
+              href="/dashboard/billing"
+              className="group rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/60 transition hover:-translate-y-1 hover:bg-blue-600 hover:shadow-2xl hover:shadow-blue-900/20"
+            >
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-200">
+                Plan
+              </p>
+
+              <p className="mt-4 text-2xl font-black tracking-[-0.05em]">
+                Trial Active
+              </p>
+
+              <p className="mt-3 text-sm font-bold text-white/60">
+                Kelola paket dan upgrade plan.
+              </p>
+
+              <div className="mt-5 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-xl font-black transition group-hover:bg-white group-hover:text-blue-600">
+                →
+              </div>
+            </Link>
           </div>
 
           <div className="mb-10">
@@ -334,6 +370,22 @@ export default function CentralDashboardPage() {
                 Gunakan join code dari gereja Anda atau request workspace baru
                 jika gereja Anda ingin memakai KiraServe.
               </p>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  href="/church/gsjs/join"
+                  className="rounded-full bg-slate-900 px-6 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+                >
+                  Join with Code →
+                </Link>
+
+                <Link
+                  href="/church/request"
+                  className="rounded-full border border-slate-200 bg-white px-6 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-slate-900 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                >
+                  Request Workspace →
+                </Link>
+              </div>
             </div>
           )}
 
@@ -347,33 +399,62 @@ export default function CentralDashboardPage() {
             </h2>
           </div>
 
-          <div className="grid max-w-[720px] gap-6">
-            {serviceActions.map((service) => (
-              <div
-                key={service.title}
-                className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60"
-              >
-                <h3 className="text-3xl font-black tracking-[-0.05em] text-slate-900">
-                  {service.title}
-                </h3>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,720px)_minmax(320px,1fr)]">
+            <div className="grid gap-6">
+              {serviceActions.map((service) => (
+                <div
+                  key={service.title}
+                  className="rounded-[2.5rem] bg-white p-8 shadow-xl shadow-slate-200/60"
+                >
+                  <h3 className="text-3xl font-black tracking-[-0.05em] text-slate-900">
+                    {service.title}
+                  </h3>
 
-                <p className="mt-4 text-base leading-7 text-slate-500">
-                  {service.desc}
+                  <p className="mt-4 text-base leading-7 text-slate-500">
+                    {service.desc}
+                  </p>
+
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    {service.actions.map((action) => (
+                      <Link
+                        key={action.href}
+                        href={action.href}
+                        className="rounded-full bg-slate-900 px-6 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
+                      >
+                        {action.label} →
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Link
+              href="/dashboard/billing"
+              className="group relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white shadow-xl shadow-blue-900/20 transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-900/30"
+            >
+              <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl" />
+              <div className="absolute -bottom-24 left-0 h-56 w-56 rounded-full bg-blue-200/10 blur-3xl" />
+
+              <div className="relative z-10">
+                <p className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100">
+                  Billing & Plan
                 </p>
 
-                <div className="mt-8 flex flex-wrap gap-3">
-                  {service.actions.map((action) => (
-                    <Link
-                      key={action.href}
-                      href={action.href}
-                      className="rounded-full bg-slate-900 px-6 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-600"
-                    >
-                      {action.label} →
-                    </Link>
-                  ))}
+                <h3 className="mt-5 text-4xl font-black leading-tight tracking-[-0.05em]">
+                  Trial aktif. Upgrade mulai 9 ribu/bulan.
+                </h3>
+
+                <p className="mt-5 text-base leading-7 text-blue-50/80">
+                  Lihat status trial akun Anda dan pilih paket Starter, Growth,
+                  atau Pro Ministry sesuai kebutuhan gereja.
+                </p>
+
+                <div className="mt-8 inline-flex rounded-full bg-white px-6 py-4 text-xs font-black uppercase tracking-[0.14em] text-blue-700 transition group-hover:bg-cyan-100">
+                  Open Billing →
                 </div>
               </div>
-            ))}
+            </Link>
           </div>
         </div>
       </section>
